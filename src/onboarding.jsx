@@ -250,7 +250,13 @@ function StepKids({ kids, setKids, onNext, onBack }) {
 function StepCamps({ camps, setCamps, kids, onNext, onBack, saving }) {
   const validKids = kids.filter(k => k.name.trim());
   const update = (id, patch) => setCamps(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
-  const add    = () => setCamps(prev => [...prev, { id: 'cm' + Date.now(), name: '', weekIdx: 1, kidIds: [], deadline: '', knownDeadline: null }]);
+  const add    = () => setCamps(prev => [...prev, { id: 'cm' + Date.now(), name: '', weekIdx: 1, kidIds: validKids.length === 1 ? [validKids[0].id] : [], deadline: '', knownDeadline: null }]);
+
+  // Auto-assign the only kid to any camp that has no kids selected
+  useEffect(() => {
+    if (validKids.length !== 1) return;
+    setCamps(prev => prev.map(c => c.kidIds.length === 0 ? { ...c, kidIds: [validKids[0].id] } : c));
+  }, [validKids.length > 0 ? validKids[0].id : null]);
   const remove = (id) => setCamps(prev => prev.filter(c => c.id !== id));
 
   const namedCamps = camps.filter(c => c.name.trim());
