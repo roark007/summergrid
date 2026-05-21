@@ -41,29 +41,27 @@ export default function Landing() {
   useEffect(() => {
     if (!user) return;
     getUserGroups(user.uid)
-      .then(groups => { if (groups.length > 0) setGroupId(groups[0]); })
-      .catch(() => {});
+      .then(groups => {
+        navigate(groups.length > 0 ? `/app/${groups[0]}` : '/onboarding', { replace: true });
+      })
+      .catch(() => navigate('/onboarding', { replace: true }));
   }, [user?.uid]);
 
-  const go = () => {
-    if (user && groupId) navigate(`/app/${groupId}`);
-    else if (user)       navigate('/onboarding');
-    else                 navigate('/signin');
-  };
+  const go = () => navigate('/signin');
 
   return (
     <div style={{ background: 'var(--sg-white)' }}>
-      <LandingNav onStart={go} loggedIn={!!user}/>
-      <Hero onStart={go} loggedIn={!!user}/>
+      <LandingNav onStart={go}/>
+      <Hero onStart={go}/>
       <ProductPreview/>
       <HowItWorks/>
-      <FinalCTA onStart={go} loggedIn={!!user}/>
+      <FinalCTA onStart={go}/>
       <Footer/>
     </div>
   );
 }
 
-function LandingNav({ onStart, loggedIn }) {
+function LandingNav({ onStart }) {
   return (
     <header className="sg-landing-nav" style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
@@ -76,12 +74,12 @@ function LandingNav({ onStart, loggedIn }) {
         fontFamily: 'var(--sg-font-body)', fontSize: 12, fontWeight: 600, letterSpacing: '0.12em',
         color: '#fff', background: 'transparent', border: '1.5px solid #fff', borderRadius: 999,
         padding: '8px 18px', cursor: 'pointer',
-      }}>{loggedIn ? 'OPEN MY GRID →' : 'OPEN A GRID →'}</button>
+      }}>OPEN A GRID →</button>
     </header>
   );
 }
 
-function Hero({ onStart, loggedIn }) {
+function Hero({ onStart }) {
   return (
     <section className="sg-landing-section sg-landing-hero" style={{
       minHeight: '100vh', background: 'var(--sg-black)', color: 'var(--sg-white)',
@@ -98,7 +96,7 @@ function Hero({ onStart, loggedIn }) {
       </p>
       <div style={{ marginTop: 48 }}>
         <Button variant="accent" size="lg" onClick={onStart} iconAfter="arrowR">
-          {loggedIn ? 'OPEN MY GRID' : 'CREATE YOUR SUMMER GRID'}
+          CREATE YOUR SUMMER GRID
         </Button>
       </div>
       <div className="sg-mono" style={{
@@ -210,7 +208,7 @@ function HowItWorks() {
   );
 }
 
-function FinalCTA({ onStart, loggedIn }) {
+function FinalCTA({ onStart }) {
   return (
     <section className="sg-landing-section sg-landing-cta" style={{
       background: 'var(--sg-black)', color: 'var(--sg-white)',
@@ -222,7 +220,7 @@ function FinalCTA({ onStart, loggedIn }) {
       </h2>
       <div style={{ marginTop: 56 }}>
         <Button variant="accent" size="lg" onClick={onStart} iconAfter="arrowR">
-          {loggedIn ? 'OPEN MY GRID' : 'CREATE YOUR SUMMER GRID'}
+          CREATE YOUR SUMMER GRID
         </Button>
       </div>
       <div className="sg-mono" style={{ marginTop: 28, fontSize: 11, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.4)' }}>
