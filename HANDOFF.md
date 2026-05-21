@@ -45,7 +45,7 @@ userGroups/{userId_groupId}            — { userId, groupId }   (index — no c
 - `AuthProvider` in [app.jsx](src/app.jsx) wraps everything, listens to `onAuthStateChanged`, shows spinner until first auth state resolves
 - `Protected` route component redirects to `/signin` with `state.from = current path` if not authed
 - `useAuth()` hook returns the current Firebase User object (or null)
-- **On mobile** (`/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)`), Google sign-in uses `signInWithRedirect` (popups are blocked on mobile browsers). The `from` location state is stashed in `sessionStorage` before redirect because the redirect reloads the page and wipes React state. See [auth.jsx](src/auth.jsx) `FROM_KEY`.
+- **Google sign-in uses `signInWithPopup` everywhere** (desktop AND mobile). We previously used `signInWithRedirect` on mobile but it silently never fired on iOS Safari and some Android browsers ("nothing happens" when tapping the button). Popups work universally — on mobile they open as a new tab. The `sessionStorage` FROM_KEY plumbing in auth.jsx is left in place as a safety net but unused.
 - Single navigation path post-login: the `useEffect` watching `currentUser?.uid` in `AuthPage` is the only place that navigates. Don't add explicit navigations in click handlers — it causes double-navigates and races.
 
 ## Invite/join flow
@@ -84,6 +84,7 @@ If you change `joinGroup` or `createGroup` to touch new paths, **you almost cert
 - Adding/editing/deleting blocks from the grid
 - Empty grid callout banner + "ADD CAMP" labeled cells
 - Auto-redirect of logged-in users from `/` to their group
+- **MANAGE drawer** (button in calendar header) — add partner after onboarding, add/edit/remove kids, view partner-specific or general invite link. The partner section auto-collapses once the partner actually joins.
 
 ## What's untested / probably has bugs
 
