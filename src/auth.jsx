@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { signInGoogle, signInEmail, signUpEmail } from './firebase.js';
+import { signInGoogle, signInEmail, signUpEmail, getUserGroups } from './firebase.js';
 import { Button, Wordmark, Icon, InputBox, Field, Eyebrow } from './ui.jsx';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || '/onboarding';
+  const from = location.state?.from || null; // null = auto-detect
 
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
   const [name, setName] = useState('');
@@ -15,30 +15,44 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const afterLogin = async (user) => {
+    if (from) { navigate(from, { replace: true }); return; }
+    // Auto-detect: send to existing group or onboarding
+    try {
+      const groups = await getUserGroups(user.uid);
+      navigate(groups.length > 0 ? `/app/${groups[0]}` : '/onboarding', { replace: true });
+    } catch {
+      navigate('/onboarding', { replace: true });
+    }
+  };
+
   const handleGoogle = async () => {
     setError(''); setLoading(true);
     try {
-      await signInGoogle();
-      navigate(from, { replace: true });
+      const cred = await signInGoogle();
+      await afterLogin(cred.user);
     } catch (e) {
       setError(friendlyError(e.code));
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   const handleEmail = async (e) => {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
+      let cred;
       if (mode === 'signup') {
         if (!name.trim()) { setError('Please enter your name.'); setLoading(false); return; }
-        await signUpEmail(email, password, name.trim());
+        cred = await signUpEmail(email, password, name.trim());
       } else {
-        await signInEmail(email, password);
+        cred = await signInEmail(email, password);
       }
-      navigate(from, { replace: true });
+      await afterLogin(cred.user);
     } catch (err) {
       setError(friendlyError(err.code));
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   return (
