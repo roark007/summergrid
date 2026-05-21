@@ -275,6 +275,15 @@ function CalendarGrid({ isMobile, onAddCell, onEditBlock, onOpenWeek }) {
 
   return (
     <div style={{ padding: '24px 32px 80px', overflowX: 'auto' }}>
+      {blocks.length === 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', marginBottom: 24, background: 'var(--sg-accent-soft)', border: '1px solid var(--sg-accent)', maxWidth: 560 }}>
+          <Icon name="plus" size={18} stroke={2} style={{ color: 'var(--sg-accent)', flexShrink: 0 }}/>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--sg-accent)' }}>Your grid is empty</div>
+            <div style={{ fontSize: 13, color: 'var(--sg-ink-60)', marginTop: 2 }}>Click any <strong>ADD CAMP</strong> cell below to start planning your summer.</div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: `220px repeat(${WEEKS.length}, minmax(150px, 1fr))`, gap: 6, minWidth: 1400 }}>
         <div style={{ position: 'sticky', left: 0, background: 'var(--sg-white)', zIndex: 2 }}/>
         {WEEKS.map(w => {
@@ -414,10 +423,12 @@ function CampBlock({ block, parent, carpool, onClick }) {
 
 function EmptyCell({ parentColor, onClick }) {
   const [hover, setHover] = useState(false);
+  const c = hover ? parentColor : 'var(--sg-ink-40)';
   return (
     <button onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ background: hover ? parentColor + '08' : 'transparent', border: '1px dashed ' + (hover ? parentColor : 'var(--sg-ink-20)'), minHeight: 116, cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all var(--sg-dur-fast) var(--sg-ease)', fontFamily: 'inherit' }}>
-      <Icon name="plus" size={16} stroke={1.5} style={{ color: hover ? parentColor : 'var(--sg-ink-40)' }}/>
+      style={{ background: hover ? parentColor + '08' : 'transparent', border: '1px dashed ' + (hover ? parentColor : 'var(--sg-ink-20)'), minHeight: 116, cursor: 'pointer', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all var(--sg-dur-fast) var(--sg-ease)', fontFamily: 'inherit' }}>
+      <Icon name="plus" size={16} stroke={1.5} style={{ color: c }}/>
+      <span style={{ fontFamily: 'var(--sg-font-mono)', fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', color: c, transition: 'color var(--sg-dur-fast)' }}>ADD CAMP</span>
     </button>
   );
 }

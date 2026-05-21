@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createGroup, addUserGroupIndex } from './firebase.js';
 import { useAuth } from './app.jsx';
-import { WEEKS } from './data.js';
 import { Button, Eyebrow, Wordmark, Icon, Field, InputBox } from './ui.jsx';
 
-const STEPS = ['welcome', 'partner', 'name', 'kids', 'camps', 'done'];
+const STEPS = ['welcome', 'partner', 'kids', 'done'];
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -13,10 +12,8 @@ export default function Onboarding() {
   const [stepIdx, setStepIdx] = useState(0);
   const step = STEPS[stepIdx];
 
-  const [groupName, setGroupName] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [kids, setKids] = useState([{ id: 'k1', name: '', age: '' }]);
-  const [camps, setCamps] = useState([{ id: 'cm1', name: '', weekIdx: 1, kidIds: [], deadline: '', knownDeadline: null }]);
   const [groupId, setGroupId] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -25,15 +22,19 @@ export default function Onboarding() {
 
   const finish = async () => {
     setSaving(true);
+    const firstName = (user.displayName || user.email || 'My').split(/[\s@]/)[0];
+    const autoGroupName = partnerName.trim()
+      ? `${firstName} & ${partnerName.trim()}'s Summer`
+      : `${firstName}'s Summer Crew`;
     try {
       const gid = await createGroup({
         userId: user.uid,
         displayName: user.displayName || user.email,
         email: user.email,
-        groupName: groupName.trim(),
+        groupName: autoGroupName,
         partnerName: partnerName.trim(),
         kids,
-        camps,
+        camps: [],
       });
       await addUserGroupIndex(user.uid, gid);
       setGroupId(gid);
@@ -53,10 +54,8 @@ export default function Onboarding() {
         <div style={{ width: '100%', maxWidth: 720 }}>
           {step === 'welcome' && <StepWelcome user={user} onNext={next}/>}
           {step === 'partner' && <StepPartner partnerName={partnerName} setPartnerName={setPartnerName} onNext={next} onBack={back}/>}
-          {step === 'name'    && <StepName groupName={groupName} setGroupName={setGroupName} onNext={next} onBack={back}/>}
-          {step === 'kids'    && <StepKids kids={kids} setKids={setKids} onNext={next} onBack={back}/>}
-          {step === 'camps'   && <StepCamps camps={camps} setCamps={setCamps} kids={kids} onNext={finish} onBack={back} saving={saving}/>}
-          {step === 'done'    && groupId && <StepDone groupId={groupId} groupName={groupName} partnerName={partnerName} kids={kids} camps={camps} onFinish={() => navigate(`/app/${groupId}`)}/>}
+          {step === 'kids'    && <StepKids kids={kids} setKids={setKids} onNext={finish} onBack={back} saving={saving}/>}
+          {step === 'done'    && groupId && <StepDone groupId={groupId} partnerName={partnerName} kids={kids} onFinish={() => navigate(`/app/${groupId}`)}/>}
         </div>
       </main>
     </div>
@@ -205,7 +204,7 @@ function StepName({ groupName, setGroupName, onNext, onBack }) {
 
 // ── Step 3: Kids ─────────────────────────────────────────────────────────────
 
-function StepKids({ kids, setKids, onNext, onBack }) {
+function StepKids({ kids, setKids, onNext, onBack, saving }) {
   const update = (id, patch) => setKids(prev => prev.map(k => k.id === id ? { ...k, ...patch } : k));
   const add    = () => setKids(prev => [...prev, { id: 'k' + Date.now(), name: '', age: '' }]);
   const remove = (id) => setKids(prev => prev.filter(k => k.id !== id));
@@ -239,8 +238,8 @@ function StepKids({ kids, setKids, onNext, onBack }) {
           <Icon name="plus" size={14} stroke={2}/> ADD ANOTHER KID
         </button>
       </div>
-      <StepFooter onBack={onBack} onNext={onNext} nextDisabled={valid.length === 0}
-        nextLabel={valid.length === 0 ? 'NEED AT LEAST ONE' : `CONTINUE WITH ${valid.length} KID${valid.length > 1 ? 'S' : ''}`}/>
+      <StepFooter onBack={onBack} onNext={onNext} nextDisabled={valid.length === 0} saving={saving}
+        nextLabel={saving ? 'CREATING GRID…' : valid.length === 0 ? 'NEED AT LEAST ONE KID' : 'CREATE MY GRID'}/>
     </div>
   );
 }
@@ -380,7 +379,7 @@ const chipStyle = (active) => ({
 
 // ── Step 5: Done ──────────────────────────────────────────────────────────────
 
-function StepDone({ groupId, groupName, partnerName, kids, camps, onFinish }) {
+function StepDone({ groupId, partnerName, kids, onFinish }) {
   const [copied, setCopied] = useState(false);
   const inviteUrl = `${window.location.origin}${window.location.pathname}#/join/${groupId}`;
   const copy = () => {
@@ -388,67 +387,42 @@ function StepDone({ groupId, groupName, partnerName, kids, camps, onFinish }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
-  const validKids  = kids.filter(k => k.name.trim());
-  const validCamps = camps.filter(c => c.name.trim());
+  const validKids = kids.filter(k => k.name.trim());
 
   return (
     <div>
-      <StepTitle eyebrow="ALL SET">
+      <StepTitle eyebrow="YOU'RE ALL SET"
+        sub={`Your grid is ready with ${validKids.map(k => k.name).join(' and ')} on it. Add camps whenever you're ready — just tap the + on any cell.`}>
         Your grid is<br/>
-        <span style={{ color: 'var(--sg-accent)' }}>live.</span>
+        <span style={{ color: 'var(--sg-accent)' }}>ready.</span>
       </StepTitle>
 
-      <div style={{ display: 'grid', gap: 16, maxWidth: 560, marginBottom: 32 }}>
-        <SummaryRow icon="users" label="GROUP">{groupName}</SummaryRow>
-        <SummaryRow icon="users" label={`${validKids.length} KID${validKids.length === 1 ? '' : 'S'}`}>
-          {validKids.length > 0 ? validKids.map(k => `${k.name}${k.age ? ' (' + k.age + ')' : ''}`).join(' · ') : <span style={{ color: 'var(--sg-ink-40)' }}>add later</span>}
-        </SummaryRow>
-        {validCamps.length > 0 && (
-          <SummaryRow icon="calendar" label={`${validCamps.length} CAMP${validCamps.length === 1 ? '' : 'S'}`}>
-            {validCamps.map(c => c.name).join(' · ')}
-          </SummaryRow>
-        )}
-      </div>
-
-      {/* Invite block */}
-      <div style={{ padding: 20, background: 'var(--sg-black)', color: 'var(--sg-white)', marginBottom: 32, maxWidth: 560 }}>
-        <div className="sg-mono" style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.6)', marginBottom: 12 }}>
-          {partnerName ? `SEND THIS LINK TO ${partnerName.toUpperCase()}` : 'INVITE YOUR PARTNER OR OTHER PARENTS'}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
-          <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(250,250,247,0.85)' }}>
-            {inviteUrl}
+      {partnerName && (
+        <div style={{ padding: 20, background: 'var(--sg-black)', color: 'var(--sg-white)', marginBottom: 32, maxWidth: 560 }}>
+          <div className="sg-mono" style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.6)', marginBottom: 12 }}>
+            SEND THIS LINK TO {partnerName.toUpperCase()}
           </div>
-          <button onClick={copy} style={{
-            padding: '8px 14px', background: copied ? 'var(--sg-accent)' : 'var(--sg-white)',
-            color: copied ? '#fff' : 'var(--sg-black)', border: 'none', cursor: 'pointer',
-            fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em',
-            display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-          }}>
-            <Icon name={copied ? 'check' : 'copy'} size={12} stroke={2.5}/>
-            {copied ? 'COPIED!' : 'COPY LINK'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
+            <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(250,250,247,0.85)' }}>
+              {inviteUrl}
+            </div>
+            <button onClick={copy} style={{
+              padding: '8px 14px', background: copied ? 'var(--sg-accent)' : 'var(--sg-white)',
+              color: copied ? '#fff' : 'var(--sg-black)', border: 'none', cursor: 'pointer',
+              fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em',
+              display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+            }}>
+              <Icon name={copied ? 'check' : 'copy'} size={12} stroke={2.5}/>
+              {copied ? 'COPIED!' : 'COPY LINK'}
+            </button>
+          </div>
+          <div style={{ marginTop: 12, fontSize: 13, color: 'rgba(250,250,247,0.6)', lineHeight: 1.5 }}>
+            {partnerName} clicks this link, signs in, and lands straight in your shared grid.
+          </div>
         </div>
-        <div style={{ marginTop: 12, fontSize: 13, color: 'rgba(250,250,247,0.6)', lineHeight: 1.5 }}>
-          {partnerName
-            ? `${partnerName} clicks this link, signs in with Google or email, and lands straight in your group. They can then add their own pickups and dropoffs.`
-            : 'Anyone with this link can sign in and join your group. They\'ll be able to add pickups, dropoffs, and camps.'}
-        </div>
-      </div>
+      )}
 
       <Button variant="accent" size="lg" iconAfter="arrowR" onClick={onFinish}>OPEN MY GRID</Button>
-    </div>
-  );
-}
-
-function SummaryRow({ icon, label, children }) {
-  return (
-    <div style={{ padding: '16px 18px', background: 'var(--sg-paper)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-      <Icon name={icon} size={16} style={{ color: 'var(--sg-ink-60)', marginTop: 2 }}/>
-      <div style={{ flex: 1 }}>
-        <div className="sg-mono" style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--sg-ink-60)', marginBottom: 4 }}>{label}</div>
-        <div style={{ fontSize: 15, fontWeight: 500 }}>{children}</div>
-      </div>
     </div>
   );
 }
