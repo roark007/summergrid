@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { signInGoogle, signInEmail, signUpEmail, getUserGroups } from './firebase.js';
+import { useAuth } from './app.jsx';
 import { Button, Wordmark, Icon, InputBox, Field, Eyebrow } from './ui.jsx';
 
 export default function AuthPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const from = location.state?.from || null; // null = auto-detect
+  const navigate   = useNavigate();
+  const location   = useLocation();
+  const from       = location.state?.from || null;
+  const currentUser = useAuth();
+  const navigated  = useRef(false);
 
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
   const [name, setName] = useState('');
@@ -14,6 +17,16 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Fires when user comes back from signInWithRedirect (mobile) or is already logged in
+  useEffect(() => {
+    if (!currentUser || navigated.current) return;
+    navigated.current = true;
+    if (from) { navigate(from, { replace: true }); return; }
+    getUserGroups(currentUser.uid)
+      .then(groups => navigate(groups.length > 0 ? `/app/${groups[0]}` : '/onboarding', { replace: true }))
+      .catch(() => navigate('/onboarding', { replace: true }));
+  }, [currentUser?.uid]);
 
   const afterLogin = async (user) => {
     if (from) { navigate(from, { replace: true }); return; }
