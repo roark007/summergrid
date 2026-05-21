@@ -252,7 +252,10 @@ function StepCamps({ camps, setCamps, kids, onNext, onBack, saving }) {
   const update = (id, patch) => setCamps(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
   const add    = () => setCamps(prev => [...prev, { id: 'cm' + Date.now(), name: '', weekIdx: 1, kidIds: [], deadline: '', knownDeadline: null }]);
   const remove = (id) => setCamps(prev => prev.filter(c => c.id !== id));
-  const valid  = camps.filter(c => c.name.trim());
+
+  const namedCamps = camps.filter(c => c.name.trim());
+  const missingKids = namedCamps.filter(c => c.kidIds.length === 0);
+  const canProceed = namedCamps.length === 0 || missingKids.length === 0;
 
   return (
     <div>
@@ -264,7 +267,8 @@ function StepCamps({ camps, setCamps, kids, onNext, onBack, saving }) {
           <CampForm key={c.id} camp={c} index={i} kids={validKids}
             onChange={patch => update(c.id, patch)}
             onRemove={() => camps.length > 1 && remove(c.id)}
-            canRemove={camps.length > 1}/>
+            canRemove={camps.length > 1}
+            hasError={c.name.trim() && c.kidIds.length === 0}/>
         ))}
         <button onClick={add} style={{
           padding: '16px 20px', background: 'transparent', border: '1px dashed var(--sg-ink-20)',
@@ -274,20 +278,26 @@ function StepCamps({ camps, setCamps, kids, onNext, onBack, saving }) {
           <Icon name="plus" size={14} stroke={2}/> ADD ANOTHER CAMP
         </button>
       </div>
-      <StepFooter onBack={onBack} onNext={onNext} saving={saving}
-        nextLabel={valid.length === 0 ? 'SKIP FOR NOW' : `ADD ${valid.length} CAMP${valid.length > 1 ? 'S' : ''}`}/>
+      {!canProceed && (
+        <div style={{ marginTop: 16, padding: '12px 16px', background: '#FFF0EE', border: '1px solid #FFD0C8', fontSize: 13, color: '#B93A2A' }}>
+          Every camp needs at least one kid assigned. Click the kid's name under "Which Kids" for each camp.
+        </div>
+      )}
+      <StepFooter onBack={onBack} onNext={canProceed ? onNext : undefined} saving={saving}
+        nextDisabled={!canProceed}
+        nextLabel={namedCamps.length === 0 ? 'SKIP FOR NOW' : `ADD ${namedCamps.length} CAMP${namedCamps.length > 1 ? 'S' : ''}`}/>
     </div>
   );
 }
 
-function CampForm({ camp, index, kids, onChange, onRemove, canRemove }) {
+function CampForm({ camp, index, kids, onChange, onRemove, canRemove, hasError }) {
   const toggleKid = (kidId) => {
     const set = new Set(camp.kidIds);
     if (set.has(kidId)) set.delete(kidId); else set.add(kidId);
     onChange({ kidIds: [...set] });
   };
   return (
-    <div style={{ padding: 20, background: 'var(--sg-paper)', display: 'grid', gap: 16, border: '1px solid var(--sg-ink-10)' }}>
+    <div style={{ padding: 20, background: 'var(--sg-paper)', display: 'grid', gap: 16, border: hasError ? '1.5px solid #FFD0C8' : '1px solid var(--sg-ink-10)', background: hasError ? '#FFF8F7' : 'var(--sg-paper)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div className="sg-mono" style={{ fontSize: 11, color: 'var(--sg-accent)', letterSpacing: '0.08em', fontWeight: 600 }}>
           CAMP {String(index + 1).padStart(2, '0')}
