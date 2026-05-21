@@ -1,5 +1,5 @@
 // SummerGrid v2 — App root: auth, routing, real-time group subscriptions
-import { useState, useEffect, useContext, createContext, useCallback } from 'react';
+import { useState, useEffect, useContext, createContext, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc, collection } from 'firebase/firestore';
@@ -123,9 +123,11 @@ function JoinPage() {
   const navigate      = useNavigate();
   const [status, setStatus] = useState('joining'); // joining | error
   const [error,  setError]  = useState('');
+  const joinedRef     = useRef(false);
 
   useEffect(() => {
-    if (!user || !code) return;
+    if (!user || !code || joinedRef.current) return;
+    joinedRef.current = true;
     (async () => {
       try {
         const groupId = await joinGroup({
@@ -138,6 +140,7 @@ function JoinPage() {
         navigate(`/app/${groupId}`, { replace: true });
       } catch (e) {
         console.error(e);
+        joinedRef.current = false;
         setError(e.message || 'Could not join group. The invite link may have expired.');
         setStatus('error');
       }

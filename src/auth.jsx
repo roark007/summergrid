@@ -4,46 +4,47 @@ import { signInGoogle, signInEmail, signUpEmail, getUserGroups } from './firebas
 import { useAuth } from './app.jsx';
 import { Button, Wordmark, Icon, InputBox, Field, Eyebrow } from './ui.jsx';
 
+const FROM_KEY = 'sg.authFrom';
+
 export default function AuthPage() {
-  const navigate   = useNavigate();
-  const location   = useLocation();
-  const from       = location.state?.from || null;
+  const navigate    = useNavigate();
+  const location    = useLocation();
   const currentUser = useAuth();
-  const navigated  = useRef(false);
+  const navigated   = useRef(false);
 
-  const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  // `from` may come from in-memory state (desktop) or sessionStorage (mobile, surviving redirect)
+  const fromState   = location.state?.from || null;
+  const fromStored  = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(FROM_KEY) : null;
+  const from        = fromState || fromStored;
+
+  // Persist `from` so it survives signInWithRedirect on mobile
+  useEffect(() => {
+    if (fromState) sessionStorage.setItem(FROM_KEY, fromState);
+  }, [fromState]);
+
+  const [mode, setMode]         = useState('signin');
+  const [name, setName]         = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
-  // Fires when user comes back from signInWithRedirect (mobile) or is already logged in
+  // Single navigation path: fires after any successful sign-in (popup, email, or returning from redirect)
   useEffect(() => {
     if (!currentUser || navigated.current) return;
     navigated.current = true;
+    sessionStorage.removeItem(FROM_KEY);
     if (from) { navigate(from, { replace: true }); return; }
     getUserGroups(currentUser.uid)
       .then(groups => navigate(groups.length > 0 ? `/app/${groups[0]}` : '/onboarding', { replace: true }))
       .catch(() => navigate('/onboarding', { replace: true }));
   }, [currentUser?.uid]);
 
-  const afterLogin = async (user) => {
-    if (from) { navigate(from, { replace: true }); return; }
-    // Auto-detect: send to existing group or onboarding
-    try {
-      const groups = await getUserGroups(user.uid);
-      navigate(groups.length > 0 ? `/app/${groups[0]}` : '/onboarding', { replace: true });
-    } catch {
-      navigate('/onboarding', { replace: true });
-    }
-  };
-
   const handleGoogle = async () => {
     setError(''); setLoading(true);
     try {
-      const cred = await signInGoogle();
-      await afterLogin(cred.user);
+      await signInGoogle(); // on mobile, page redirects and never returns from this line
+      // on desktop, onAuthStateChanged fires → useEffect above navigates
     } catch (e) {
       setError(friendlyError(e.code));
       setLoading(false);
@@ -54,14 +55,13 @@ export default function AuthPage() {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      let cred;
       if (mode === 'signup') {
         if (!name.trim()) { setError('Please enter your name.'); setLoading(false); return; }
-        cred = await signUpEmail(email, password, name.trim());
+        await signUpEmail(email, password, name.trim());
       } else {
-        cred = await signInEmail(email, password);
+        await signInEmail(email, password);
       }
-      await afterLogin(cred.user);
+      // useEffect navigates once currentUser updates
     } catch (err) {
       setError(friendlyError(err.code));
       setLoading(false);

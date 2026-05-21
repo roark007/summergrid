@@ -15,6 +15,7 @@ export default function Onboarding() {
   const [partnerName, setPartnerName] = useState('');
   const [kids, setKids] = useState([{ id: 'k1', name: '', age: '' }]);
   const [groupId, setGroupId] = useState(null);
+  const [inviteCode, setInviteCode] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const next = () => setStepIdx(i => Math.min(i + 1, STEPS.length - 1));
@@ -27,7 +28,7 @@ export default function Onboarding() {
       ? `${firstName} & ${partnerName.trim()}'s Summer`
       : `${firstName}'s Summer Crew`;
     try {
-      const gid = await createGroup({
+      const { groupId: gid, inviteCode: code } = await createGroup({
         userId: user.uid,
         displayName: user.displayName || user.email,
         email: user.email,
@@ -38,6 +39,7 @@ export default function Onboarding() {
       });
       await addUserGroupIndex(user.uid, gid);
       setGroupId(gid);
+      setInviteCode(code);
       next();
     } catch (e) {
       console.error(e);
@@ -55,7 +57,7 @@ export default function Onboarding() {
           {step === 'welcome' && <StepWelcome user={user} onNext={next}/>}
           {step === 'partner' && <StepPartner partnerName={partnerName} setPartnerName={setPartnerName} onNext={next} onBack={back}/>}
           {step === 'kids'    && <StepKids kids={kids} setKids={setKids} onNext={finish} onBack={back} saving={saving}/>}
-          {step === 'done'    && groupId && <StepDone groupId={groupId} partnerName={partnerName} kids={kids} onFinish={() => navigate(`/app/${groupId}`)}/>}
+          {step === 'done'    && groupId && <StepDone inviteCode={inviteCode} partnerName={partnerName} kids={kids} onFinish={() => navigate(`/app/${groupId}`)}/>}
         </div>
       </main>
     </div>
@@ -379,9 +381,9 @@ const chipStyle = (active) => ({
 
 // ── Step 5: Done ──────────────────────────────────────────────────────────────
 
-function StepDone({ groupId, partnerName, kids, onFinish }) {
+function StepDone({ inviteCode, partnerName, kids, onFinish }) {
   const [copied, setCopied] = useState(false);
-  const inviteUrl = `${window.location.origin}${window.location.pathname}#/join/${groupId}`;
+  const inviteUrl = `${window.location.origin}${window.location.pathname}#/join/${inviteCode}`;
   const copy = () => {
     navigator.clipboard?.writeText(inviteUrl);
     setCopied(true);

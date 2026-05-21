@@ -3,7 +3,14 @@
     "allow": [
       "PowerShell(Expand-Archive -Path \"C:\\\\Summergrid\\\\Summergrid-handoff.zip\" -DestinationPath \"C:\\\\Summergrid\\\\extracted\" -Force)",
       "Bash(npm install *)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(npm run *)"
     ]
   }
 }

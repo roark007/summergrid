@@ -2,16 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Invite codes — readable by anyone signed in (for joining via link)
+    // Invite codes — any signed-in user can read (to join) or create (when making a group)
     match /inviteCodes/{code} {
       allow read: if request.auth != null;
-      allow write: if false; // only written by Cloud Functions / server-side create
+      allow create: if request.auth != null;
+      allow update, delete: if false;
     }
 
-    // User-to-group index — each user can only read/write their own entries
+    // User-to-group index
     match /userGroups/{entry} {
-      allow read, write: if request.auth != null
-        && entry.matches(request.auth.uid + '_.*');
+      allow read, write: if request.auth != null;
     }
 
     // Groups
@@ -29,9 +29,13 @@ service cloud.firestore {
 
       // Members sub-collection
       match /members/{memberId} {
-        allow read: if request.auth != null
-          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
-        // A member can create their own entry; existing members can update
+        // You can always read your own member doc (so we can check if you're already in)
+        // or read any member doc once you're a member
+        allow read: if request.auth != null && (
+          memberId == request.auth.uid ||
+          exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+        );
+        // A user can create their own member entry (used for joining via invite link)
         allow create: if request.auth != null && memberId == request.auth.uid;
         allow update: if request.auth != null
           && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));

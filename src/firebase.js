@@ -53,7 +53,7 @@ function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-export async function createGroup({ userId, displayName, email, groupName, kids, camps }) {
+export async function createGroup({ userId, displayName, email, groupName, partnerName, kids, camps }) {
   const inviteCode = generateCode();
 
   // Create group doc
@@ -63,6 +63,7 @@ export async function createGroup({ userId, displayName, email, groupName, kids,
     createdBy: userId,
     createdAt: serverTimestamp(),
     season: 'Summer 2026',
+    ...(partnerName ? { partnerName } : {}),
   });
   const groupId = groupRef.id;
 
@@ -114,23 +115,37 @@ export async function createGroup({ userId, displayName, email, groupName, kids,
     }
   }
 
-  return groupId;
+  return { groupId, inviteCode };
 }
 
 export async function joinGroup({ userId, displayName, email, inviteCode }) {
   const codeSnap = await getDoc(doc(db, 'inviteCodes', inviteCode.toUpperCase()));
-  if (!codeSnap.exists()) throw new Error('Invite code not found');
+  if (!codeSnap.exists()) throw new Error('This invite link is invalid or has expired.');
   const { groupId } = codeSnap.data();
 
-  // Get existing members to pick a unique color
-  const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'));
-  const existingMembers = membersSnap.docs.map(d => d.data());
+  // If the user is already a member, skip — don't overwrite their record (preserves admin status)
+  try {
+    const existing = await getDoc(doc(db, 'groups', groupId, 'members', userId));
+    if (existing.exists()) return groupId;
+  } catch { /* permission denied = definitely not a member, fall through */ }
+
+  // Pick a color. We try to read existing members for uniqueness, but if rules block it
+  // (we're not a member yet), fall back to deterministic-from-userId.
+  let memberColor;
+  try {
+    const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'));
+    memberColor = pickColor(membersSnap.docs.map(d => d.data()));
+  } catch {
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) | 0;
+    memberColor = COLORS[Math.abs(hash) % COLORS.length];
+  }
 
   await setDoc(doc(db, 'groups', groupId, 'members', userId), {
     name: displayName,
     short: deriveShort(displayName),
     initials: deriveInitials(displayName),
-    color: pickColor(existingMembers),
+    color: memberColor,
     email,
     isAdmin: false,
     joinedAt: serverTimestamp(),
