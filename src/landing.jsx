@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Eyebrow, Wordmark, Icon, Avatar, AvatarCluster } from './ui.jsx';
+import { useAuth } from './app.jsx';
+import { getUserGroups } from './firebase.js';
 
 const PREVIEW_PARENTS = [
   { id: 'p1', name: 'Jordan Sato',   initials: 'JS', color: '#FF5A1F' },
@@ -32,21 +34,36 @@ const PREVIEW_ROWS = [
 ];
 
 export default function Landing() {
-  const navigate = useNavigate();
-  const go = () => navigate('/signin');
+  const navigate  = useNavigate();
+  const user      = useAuth();
+  const [groupId, setGroupId] = useState(null);
+
+  useEffect(() => {
+    if (!user) return;
+    getUserGroups(user.uid)
+      .then(groups => { if (groups.length > 0) setGroupId(groups[0]); })
+      .catch(() => {});
+  }, [user?.uid]);
+
+  const go = () => {
+    if (user && groupId) navigate(`/app/${groupId}`);
+    else if (user)       navigate('/onboarding');
+    else                 navigate('/signin');
+  };
+
   return (
     <div style={{ background: 'var(--sg-white)' }}>
-      <LandingNav onStart={go}/>
-      <Hero onStart={go}/>
+      <LandingNav onStart={go} loggedIn={!!user}/>
+      <Hero onStart={go} loggedIn={!!user}/>
       <ProductPreview/>
       <HowItWorks/>
-      <FinalCTA onStart={go}/>
+      <FinalCTA onStart={go} loggedIn={!!user}/>
       <Footer/>
     </div>
   );
 }
 
-function LandingNav({ onStart }) {
+function LandingNav({ onStart, loggedIn }) {
   return (
     <header className="sg-landing-nav" style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
@@ -59,12 +76,12 @@ function LandingNav({ onStart }) {
         fontFamily: 'var(--sg-font-body)', fontSize: 12, fontWeight: 600, letterSpacing: '0.12em',
         color: '#fff', background: 'transparent', border: '1.5px solid #fff', borderRadius: 999,
         padding: '8px 18px', cursor: 'pointer',
-      }}>OPEN A GRID →</button>
+      }}>{loggedIn ? 'OPEN MY GRID →' : 'OPEN A GRID →'}</button>
     </header>
   );
 }
 
-function Hero({ onStart }) {
+function Hero({ onStart, loggedIn }) {
   return (
     <section className="sg-landing-section sg-landing-hero" style={{
       minHeight: '100vh', background: 'var(--sg-black)', color: 'var(--sg-white)',
@@ -81,7 +98,7 @@ function Hero({ onStart }) {
       </p>
       <div style={{ marginTop: 48 }}>
         <Button variant="accent" size="lg" onClick={onStart} iconAfter="arrowR">
-          CREATE YOUR SUMMER GRID
+          {loggedIn ? 'OPEN MY GRID' : 'CREATE YOUR SUMMER GRID'}
         </Button>
       </div>
       <div className="sg-mono" style={{
@@ -193,7 +210,7 @@ function HowItWorks() {
   );
 }
 
-function FinalCTA({ onStart }) {
+function FinalCTA({ onStart, loggedIn }) {
   return (
     <section className="sg-landing-section sg-landing-cta" style={{
       background: 'var(--sg-black)', color: 'var(--sg-white)',
@@ -205,7 +222,7 @@ function FinalCTA({ onStart }) {
       </h2>
       <div style={{ marginTop: 56 }}>
         <Button variant="accent" size="lg" onClick={onStart} iconAfter="arrowR">
-          CREATE YOUR SUMMER GRID
+          {loggedIn ? 'OPEN MY GRID' : 'CREATE YOUR SUMMER GRID'}
         </Button>
       </div>
       <div className="sg-mono" style={{ marginTop: 28, fontSize: 11, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.4)' }}>
