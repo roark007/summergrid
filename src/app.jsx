@@ -3,7 +3,7 @@ import { useState, useEffect, useContext, createContext, useCallback, useRef } f
 import { HashRouter, Routes, Route, Navigate, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc, collection } from 'firebase/firestore';
-import { auth, db, signOutUser, joinGroup, addUserGroupIndex } from './firebase.js';
+import { auth, db, signOutUser, joinGroup, addUserGroupIndex, getGoogleRedirectResult } from './firebase.js';
 import { DAYS, blockPickupByDay, blockDropoffByDay, blockPickupParents, blockDropoffParents, buildCarpoolIndex } from './data.js';
 import Landing from './landing.jsx';
 import AuthPage from './auth.jsx';
@@ -22,6 +22,14 @@ function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // CRITICAL for mobile: must call getRedirectResult on page load to finalize the
+    // signInWithRedirect flow. Without this, returning from Google's redirect on iOS
+    // doesn't complete the sign-in — onAuthStateChanged may fire too early.
+    getGoogleRedirectResult().catch(err => {
+      // No pending redirect, or redirect failed — either way, onAuthStateChanged will sort it out
+      if (err?.code) console.warn('Redirect result error:', err.code);
+    });
+
     const unsub = onAuthStateChanged(auth, u => {
       setUser(u);
       setLoading(false);

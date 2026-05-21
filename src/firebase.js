@@ -18,11 +18,17 @@ export const googleProvider = new GoogleAuthProvider();
 
 // ── Auth helpers ────────────────────────────────────────────────────────────
 
-// Always use popup — signInWithRedirect has known issues on iOS Safari and some Android browsers
-// where the redirect silently never fires. Popups work universally; on mobile they typically open
-// as a new tab and return to the original tab on completion.
-export const signInGoogle = () => signInWithPopup(auth, googleProvider);
-export const getGoogleRedirectResult = () => getRedirectResult(auth); // kept for backwards-compat
+// On mobile use redirect; on desktop use popup.
+// iOS Chrome opens popups in an isolated Safari View Controller and the OAuth result
+// can't communicate back to the parent tab — popup appears to "work" but the app never gets the user.
+// signInWithRedirect navigates the entire page, so there's no cross-tab communication needed.
+// CRITICAL: getRedirectResult MUST be called on page load to complete the redirect handoff —
+// AuthProvider in app.jsx does this.
+const isMobile = () =>
+  typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+export const signInGoogle = () =>
+  isMobile() ? signInWithRedirect(auth, googleProvider) : signInWithPopup(auth, googleProvider);
+export const getGoogleRedirectResult = () => getRedirectResult(auth);
 export const signInEmail = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
 export const signUpEmail = (email, pw, name) =>
   createUserWithEmailAndPassword(auth, email, pw)
