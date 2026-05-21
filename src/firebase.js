@@ -4,6 +4,8 @@ import { getFirestore, doc, collection, addDoc, setDoc, updateDoc, deleteDoc, ge
 
 const firebaseConfig = {
   apiKey: "AIzaSyAFzfghmV_Qk4fMgPjjboBFD4i3J83dHaw",
+  // Will be updated to summergrid.space once Firebase Hosting custom domain is verified.
+  // Until then, keep this as the default firebaseapp.com domain.
   authDomain: "summergrid-bd6c5.firebaseapp.com",
   projectId: "summergrid-bd6c5",
   storageBucket: "summergrid-bd6c5.firebasestorage.app",
@@ -61,12 +63,14 @@ function generateCode() {
 }
 
 export async function createGroup({ userId, displayName, email, groupName, partnerName, kids, camps }) {
-  const inviteCode = generateCode();
+  const inviteCode        = generateCode();
+  const partnerInviteCode = generateCode();
 
   // Create group doc
   const groupRef = await addDoc(collection(db, 'groups'), {
     name: groupName,
     inviteCode,
+    partnerInviteCode,
     createdBy: userId,
     createdAt: serverTimestamp(),
     season: 'Summer 2026',
@@ -74,8 +78,9 @@ export async function createGroup({ userId, displayName, email, groupName, partn
   });
   const groupId = groupRef.id;
 
-  // Register invite code
-  await setDoc(doc(db, 'inviteCodes', inviteCode), { groupId, createdAt: serverTimestamp() });
+  // Register both invite codes. Each is tagged with its kind so joinGroup can branch.
+  await setDoc(doc(db, 'inviteCodes', inviteCode),        { groupId, kind: 'general', createdAt: serverTimestamp() });
+  await setDoc(doc(db, 'inviteCodes', partnerInviteCode), { groupId, kind: 'partner', partnerOf: userId, createdAt: serverTimestamp() });
 
   // Add creator as first member
   const memberColor = COLORS[0];
@@ -122,13 +127,13 @@ export async function createGroup({ userId, displayName, email, groupName, partn
     }
   }
 
-  return { groupId, inviteCode };
+  return { groupId, inviteCode, partnerInviteCode };
 }
 
 export async function joinGroup({ userId, displayName, email, inviteCode }) {
   const codeSnap = await getDoc(doc(db, 'inviteCodes', inviteCode.toUpperCase()));
   if (!codeSnap.exists()) throw new Error('This invite link is invalid or has expired.');
-  const { groupId } = codeSnap.data();
+  const { groupId, kind, partnerOf } = codeSnap.data();
 
   // If the user is already a member, skip — don't overwrite their record (preserves admin status)
   try {
@@ -136,16 +141,24 @@ export async function joinGroup({ userId, displayName, email, inviteCode }) {
     if (existing.exists()) return groupId;
   } catch { /* permission denied = definitely not a member, fall through */ }
 
-  // Pick a color. We try to read existing members for uniqueness, but if rules block it
-  // (we're not a member yet), fall back to deterministic-from-userId.
+  // For partner joins, inherit the inviter's color (visually one family unit).
+  // For general joins, pick an unused color from the palette.
   let memberColor;
-  try {
-    const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'));
-    memberColor = pickColor(membersSnap.docs.map(d => d.data()));
-  } catch {
-    let hash = 0;
-    for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) | 0;
-    memberColor = COLORS[Math.abs(hash) % COLORS.length];
+  if (kind === 'partner' && partnerOf) {
+    try {
+      const partnerSnap = await getDoc(doc(db, 'groups', groupId, 'members', partnerOf));
+      if (partnerSnap.exists()) memberColor = partnerSnap.data().color;
+    } catch {}
+  }
+  if (!memberColor) {
+    try {
+      const membersSnap = await getDocs(collection(db, 'groups', groupId, 'members'));
+      memberColor = pickColor(membersSnap.docs.map(d => d.data()));
+    } catch {
+      let hash = 0;
+      for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) | 0;
+      memberColor = COLORS[Math.abs(hash) % COLORS.length];
+    }
   }
 
   await setDoc(doc(db, 'groups', groupId, 'members', userId), {
@@ -156,6 +169,7 @@ export async function joinGroup({ userId, displayName, email, inviteCode }) {
     email,
     isAdmin: false,
     joinedAt: serverTimestamp(),
+    ...(kind === 'partner' && partnerOf ? { partnerOf } : {}),
   });
 
   return groupId;

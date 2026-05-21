@@ -268,10 +268,18 @@ function ViewTabs({ view, setView, isMobile }) {
 function CalendarGrid({ isMobile, onAddCell, onEditBlock, onOpenWeek }) {
   const { members, children, blocks, carpoolIndex, getParent } = useCal();
 
-  const grouped = members.map(p => ({
-    parent: p,
-    kids: children.filter(c => c.parentId === p.id),
-  })).filter(g => g.kids.length > 0);
+  // Group by family unit: each "primary" parent (not partnered to anyone) becomes one row
+  // with their partners shown alongside, sharing their kids.
+  const primaries = members.filter(m => !m.partnerOf);
+  const grouped = primaries.map(primary => {
+    const partners = members.filter(m => m.partnerOf === primary.id);
+    return {
+      parent: primary,                       // primary parent (kept for compat with existing rendering)
+      partners,                              // 0+ partners in this family unit
+      parents: [primary, ...partners],       // everyone in the family unit
+      kids: children.filter(c => c.parentId === primary.id),
+    };
+  }).filter(g => g.kids.length > 0);
 
   if (isMobile) {
     return <MobileGrid grouped={grouped} onAddCell={onAddCell} onEditBlock={onEditBlock} onOpenWeek={onOpenWeek}/>;
@@ -298,8 +306,10 @@ function CalendarGrid({ isMobile, onAddCell, onEditBlock, onOpenWeek }) {
         {grouped.map((g, gi) => (
           <div key={g.parent.id} style={{ display: 'contents' }}>
             <div style={{ gridColumn: `1 / span ${WEEKS.length + 1}`, padding: '24px 0 8px', borderBottom: '1px solid var(--sg-ink-10)', display: 'flex', alignItems: 'center', gap: 12, marginTop: gi === 0 ? 0 : 16 }}>
-              <Avatar parent={g.parent} size={24}/>
-              <div className="sg-mono" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em' }}>{g.parent.short?.toUpperCase()}</div>
+              {g.partners.length > 0 ? <AvatarCluster parents={g.parents} size={24}/> : <Avatar parent={g.parent} size={24}/>}
+              <div className="sg-mono" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em' }}>
+                {g.parents.map(p => p.short?.toUpperCase()).join(' & ')}
+              </div>
               <div style={{ flex: 1 }}/>
               <div className="sg-mono" style={{ fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em' }}>{g.kids.length} KID{g.kids.length > 1 ? 'S' : ''}</div>
             </div>
@@ -912,12 +922,12 @@ function InviteModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={onClose} width={520}>
       <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--sg-ink-10)', display: 'flex', justifyContent: 'space-between' }}>
-        <Eyebrow>INVITE PARENTS</Eyebrow>
+        <Eyebrow>INVITE OTHER FAMILIES</Eyebrow>
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="close" size={20}/></button>
       </div>
       <div style={{ padding: 28 }}>
         <h2 className="sg-display" style={{ fontSize: 40, margin: '0 0 12px' }}>One link.<br/>That's it.</h2>
-        <p style={{ color: 'var(--sg-ink-60)', marginBottom: 24, fontSize: 15 }}>Send this to any parent. They sign in and join your group instantly.</p>
+        <p style={{ color: 'var(--sg-ink-60)', marginBottom: 24, fontSize: 15 }}>Send this to other parents with their own kids — they join as a separate family. To invite your partner instead (sharing your kids), use <strong>MANAGE</strong>.</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, background: 'var(--sg-paper)', border: '1px solid var(--sg-ink-20)', borderRadius: 4 }}>
           <div className="sg-mono" style={{ flex: 1, padding: '8px 10px', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inviteUrl}</div>
           <Button variant="primary" size="sm" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'COPIED' : 'COPY LINK'}</Button>
@@ -992,15 +1002,19 @@ function ManageDrawer({ open, onClose }) {
   const { group, members, children, currentUser } = useCal();
   const groupId = group?.id;
   const me      = members.find(m => m.id === currentUser?.uid);
-  const myKids  = children.filter(c => c.parentId === currentUser?.uid);
 
-  // Partner = a member other than me who joined this group
-  const partner = members.find(m => m.id !== currentUser?.uid);
+  // Family unit: I'm either a primary (everyone else with partnerOf=me is mine) or a partner (I have partnerOf set)
+  const myFamilyId = me?.partnerOf || currentUser?.uid;
+  const myKids     = children.filter(c => c.parentId === myFamilyId);
+
+  // My partner: a member (other than me) in my family unit
+  const partner = members.find(m => m.id !== currentUser?.uid && (m.partnerOf === myFamilyId || m.id === myFamilyId));
   const partnerNameInGroup = group?.partnerName;
 
   const [partnerInput, setPartnerInput] = useState('');
   const [savingPartner, setSavingPartner] = useState(false);
-  const [copiedInvite, setCopiedInvite] = useState(false);
+  const [copiedPartner, setCopiedPartner] = useState(false);
+  const [copiedGeneral, setCopiedGeneral] = useState(false);
   const [newKidName, setNewKidName] = useState('');
   const [newKidAge, setNewKidAge] = useState('');
   const [savingKid, setSavingKid] = useState(false);
@@ -1010,7 +1024,10 @@ function ManageDrawer({ open, onClose }) {
 
   useEffect(() => { setPartnerInput(partnerNameInGroup || ''); }, [partnerNameInGroup, open]);
 
-  const inviteUrl = group ? `${window.location.origin}${window.location.pathname}#/join/${group.inviteCode}` : '';
+  // Legacy groups created before partner-invite-code feature have only inviteCode.
+  // Fall back to it so the partner section still works; new groups get a distinct code.
+  const partnerInviteUrl = group ? `${window.location.origin}${window.location.pathname}#/join/${group.partnerInviteCode || group.inviteCode}` : '';
+  const generalInviteUrl = group ? `${window.location.origin}${window.location.pathname}#/join/${group.inviteCode}` : '';
 
   const savePartnerName = async () => {
     if (!partnerInput.trim()) return;
@@ -1020,10 +1037,15 @@ function ManageDrawer({ open, onClose }) {
     finally { setSavingPartner(false); }
   };
 
-  const copyInvite = () => {
-    navigator.clipboard?.writeText(inviteUrl);
-    setCopiedInvite(true);
-    setTimeout(() => setCopiedInvite(false), 1800);
+  const copyPartner = () => {
+    navigator.clipboard?.writeText(partnerInviteUrl);
+    setCopiedPartner(true);
+    setTimeout(() => setCopiedPartner(false), 1800);
+  };
+  const copyGeneral = () => {
+    navigator.clipboard?.writeText(generalInviteUrl);
+    setCopiedGeneral(true);
+    setTimeout(() => setCopiedGeneral(false), 1800);
   };
 
   const addKid = async () => {
@@ -1033,7 +1055,7 @@ function ManageDrawer({ open, onClose }) {
       await addChildDB(groupId, {
         name: newKidName.trim(),
         age:  parseInt(newKidAge) || 0,
-        parentId: currentUser.uid,
+        parentId: myFamilyId, // shared by primary + partner
       });
       setNewKidName(''); setNewKidAge('');
     } catch (e) { console.error(e); alert('Could not add kid.'); }
@@ -1114,20 +1136,20 @@ function ManageDrawer({ open, onClose }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
                   <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(250,250,247,0.85)' }}>
-                    {inviteUrl}
+                    {partnerInviteUrl}
                   </div>
-                  <button onClick={copyInvite} style={{
-                    padding: '8px 12px', background: copiedInvite ? 'var(--sg-accent)' : 'var(--sg-white)',
-                    color: copiedInvite ? '#fff' : 'var(--sg-black)', border: 'none', cursor: 'pointer',
+                  <button onClick={copyPartner} style={{
+                    padding: '8px 12px', background: copiedPartner ? 'var(--sg-accent)' : 'var(--sg-white)',
+                    color: copiedPartner ? '#fff' : 'var(--sg-black)', border: 'none', cursor: 'pointer',
                     fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em',
                     display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
                   }}>
-                    <Icon name={copiedInvite ? 'check' : 'copy'} size={12} stroke={2.5}/>
-                    {copiedInvite ? 'COPIED!' : 'COPY'}
+                    <Icon name={copiedPartner ? 'check' : 'copy'} size={12} stroke={2.5}/>
+                    {copiedPartner ? 'COPIED!' : 'COPY'}
                   </button>
                 </div>
                 <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(250,250,247,0.55)', lineHeight: 1.5 }}>
-                  They click the link, sign in, and land in your shared grid.
+                  This is a special link for your partner — when they join, they'll share your kids and pickups.
                 </div>
               </div>
             </div>
@@ -1178,19 +1200,22 @@ function ManageDrawer({ open, onClose }) {
 
         {/* ── Other parents invite ── */}
         <section>
-          <Eyebrow>INVITE OTHER PARENTS</Eyebrow>
+          <Eyebrow>INVITE OTHER FAMILIES</Eyebrow>
+          <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--sg-ink-60)', lineHeight: 1.5 }}>
+            For other parents bringing their own kids. They join as a separate family — you'll coordinate pickups across families.
+          </div>
           <div style={{ marginTop: 12, padding: 14, background: 'var(--sg-paper)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--sg-ink-90)' }}>
-              {inviteUrl}
+              {generalInviteUrl}
             </div>
-            <button onClick={copyInvite} style={{
-              padding: '8px 12px', background: copiedInvite ? 'var(--sg-accent)' : 'var(--sg-black)',
+            <button onClick={copyGeneral} style={{
+              padding: '8px 12px', background: copiedGeneral ? 'var(--sg-accent)' : 'var(--sg-black)',
               color: '#fff', border: 'none', cursor: 'pointer',
               fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em',
               display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
             }}>
-              <Icon name={copiedInvite ? 'check' : 'copy'} size={12} stroke={2.5}/>
-              {copiedInvite ? 'COPIED!' : 'COPY'}
+              <Icon name={copiedGeneral ? 'check' : 'copy'} size={12} stroke={2.5}/>
+              {copiedGeneral ? 'COPIED!' : 'COPY'}
             </button>
           </div>
         </section>
