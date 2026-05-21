@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Invite codes — readable by anyone signed in (for joining via link)
+    match /inviteCodes/{code} {
+      allow read: if request.auth != null;
+      allow write: if false; // only written by Cloud Functions / server-side create
+    }
+
+    // User-to-group index — each user can only read/write their own entries
+    match /userGroups/{entry} {
+      allow read, write: if request.auth != null
+        && entry.matches(request.auth.uid + '_.*');
+    }
+
+    // Groups
+    match /groups/{groupId} {
+      // Only members can read the group doc
+      allow read: if request.auth != null
+        && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+
+      // Only members can update (e.g. rename group)
+      allow update: if request.auth != null
+        && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+
+      // Allow create from authenticated users (onboarding creates the group)
+      allow create: if request.auth != null;
+
+      // Members sub-collection
+      match /members/{memberId} {
+        allow read: if request.auth != null
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+        // A member can create their own entry; existing members can update
+        allow create: if request.auth != null && memberId == request.auth.uid;
+        allow update: if request.auth != null
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+        allow delete: if false;
+      }
+
+      // Children sub-collection
+      match /children/{childId} {
+        allow read, write: if request.auth != null
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+      }
+
+      // Blocks sub-collection
+      match /blocks/{blockId} {
+        allow read, write: if request.auth != null
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+      }
+    }
+  }
+}

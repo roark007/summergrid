@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Expand-Archive -Path \"C:\\\\Summergrid\\\\Summergrid-handoff.zip\" -DestinationPath \"C:\\\\Summergrid\\\\extracted\" -Force)",
+      "Bash(npm install *)",
+      "Bash(echo \"EXIT:$?\")"
+    ]
+  }
+}
