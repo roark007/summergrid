@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Avoid stale HTML cache on mobile, which can wedge users on old JS even after deploys -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>SummerGrid — One shared calendar for parents</title>
     <meta name="description" content="One shared calendar for the parents managing summer together." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

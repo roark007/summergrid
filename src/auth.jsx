@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { signInGoogle, signInEmail, signUpEmail, getUserGroups } from './firebase.js';
+import { signInGoogle, signInEmail, signUpEmail, signOutUser, getUserGroups } from './firebase.js';
 import { useAuth } from './app.jsx';
 import { Button, Wordmark, Icon, InputBox, Field, Eyebrow } from './ui.jsx';
 
@@ -43,10 +43,22 @@ export default function AuthPage() {
   const handleGoogle = async () => {
     setError(''); setLoading(true);
     try {
-      await signInGoogle(); // on mobile, page redirects and never returns from this line
-      // on desktop, onAuthStateChanged fires → useEffect above navigates
+      // Clear any stale Firebase auth state that may be silently blocking the redirect.
+      // This can happen on mobile when a prior failed auth attempt left tokens in IndexedDB.
+      try { await signOutUser(); } catch {}
+      await signInGoogle();
+      // On mobile, page redirects away — anything below won't execute.
+      // On desktop, onAuthStateChanged fires after the popup completes → useEffect navigates.
+      // Mobile safety net: if the redirect didn't fire within 3s, surface an error.
+      setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          setError("Google sign-in didn't start. Try email/password below, or open the site in Safari.");
+          setLoading(false);
+        }
+      }, 3000);
     } catch (e) {
-      setError(friendlyError(e.code));
+      console.error('Google sign-in error:', e);
+      setError(friendlyError(e.code) || `Sign-in failed (${e.code || 'unknown error'}). Try email/password below.`);
       setLoading(false);
     }
   };
