@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react';
 import { WEEKS, DAYS, blockPickupByDay, blockDropoffByDay, buildCarpoolIndex } from './data.js';
-import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB } from './firebase.js';
+import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB } from './firebase.js';
 import { Button, Eyebrow, Wordmark, Icon, Avatar, AvatarCluster, Drawer, Modal, Field, InputBox } from './ui.jsx';
 
 // Context so sub-components can access group data without deep prop drilling
@@ -32,6 +32,7 @@ const useIsMobile = (bp = 760) => {
 export default function Calendar({ groupId, group, members, children, blocks, currentUser, goLanding }) {
   const [drawer, setDrawer] = useState(null);
   const [invite, setInvite] = useState(false);
+  const [manage, setManage] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [view, setView] = useState('overview');
   const [weeklyIdx, setWeeklyIdx] = useState(null);
@@ -82,6 +83,7 @@ export default function Calendar({ groupId, group, members, children, blocks, cu
         <CalendarChrome
           goLanding={goLanding}
           onInvite={() => setInvite(true)}
+          onManage={() => setManage(true)}
           onExport={() => setExportOpen(true)}
           stats={stats}
           coverageGaps={coverageGaps}
@@ -136,6 +138,7 @@ export default function Calendar({ groupId, group, members, children, blocks, cu
         </Drawer>
 
         <InviteModal open={invite} onClose={() => setInvite(false)}/>
+        <ManageDrawer open={manage} onClose={() => setManage(false)}/>
         <ExportModal open={exportOpen} onClose={() => setExportOpen(false)}/>
       </div>
     </CalCtx.Provider>
@@ -144,7 +147,7 @@ export default function Calendar({ groupId, group, members, children, blocks, cu
 
 // ── Chrome ───────────────────────────────────────────────────────────────────
 
-function CalendarChrome({ goLanding, onInvite, onExport, stats, coverageGaps, dueDeadlines, isMobile }) {
+function CalendarChrome({ goLanding, onInvite, onManage, onExport, stats, coverageGaps, dueDeadlines, isMobile }) {
   const { group, members } = useCal();
   return (
     <>
@@ -159,6 +162,7 @@ function CalendarChrome({ goLanding, onInvite, onExport, stats, coverageGaps, du
         <div style={{ flex: 1 }}/>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 12 }}>
           {!isMobile && <AvatarCluster parents={members} size={26}/>}
+          <Button variant="ghost" size="sm" icon="users" onClick={onManage}>{isMobile ? '' : 'MANAGE'}</Button>
           <Button variant="ghost" size="sm" icon="share" onClick={onInvite}>{isMobile ? '' : 'INVITE'}</Button>
           <Button variant="ghost" size="sm" icon="download" onClick={onExport}>{isMobile ? '' : 'EXPORT'}</Button>
         </div>
@@ -979,5 +983,218 @@ function ExportModal({ open, onClose }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ── ManageDrawer — add/edit partner, add/edit/remove kids ────────────────────
+
+function ManageDrawer({ open, onClose }) {
+  const { group, members, children, currentUser } = useCal();
+  const groupId = group?.id;
+  const me      = members.find(m => m.id === currentUser?.uid);
+  const myKids  = children.filter(c => c.parentId === currentUser?.uid);
+
+  // Partner = a member other than me who joined this group
+  const partner = members.find(m => m.id !== currentUser?.uid);
+  const partnerNameInGroup = group?.partnerName;
+
+  const [partnerInput, setPartnerInput] = useState('');
+  const [savingPartner, setSavingPartner] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const [newKidName, setNewKidName] = useState('');
+  const [newKidAge, setNewKidAge] = useState('');
+  const [savingKid, setSavingKid] = useState(false);
+  const [editingKidId, setEditingKidId] = useState(null);
+  const [editKidName, setEditKidName] = useState('');
+  const [editKidAge, setEditKidAge] = useState('');
+
+  useEffect(() => { setPartnerInput(partnerNameInGroup || ''); }, [partnerNameInGroup, open]);
+
+  const inviteUrl = group ? `${window.location.origin}${window.location.pathname}#/join/${group.inviteCode}` : '';
+
+  const savePartnerName = async () => {
+    if (!partnerInput.trim()) return;
+    setSavingPartner(true);
+    try { await updateGroupDB(groupId, { partnerName: partnerInput.trim() }); }
+    catch (e) { console.error(e); alert('Could not save partner name.'); }
+    finally { setSavingPartner(false); }
+  };
+
+  const copyInvite = () => {
+    navigator.clipboard?.writeText(inviteUrl);
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 1800);
+  };
+
+  const addKid = async () => {
+    if (!newKidName.trim()) return;
+    setSavingKid(true);
+    try {
+      await addChildDB(groupId, {
+        name: newKidName.trim(),
+        age:  parseInt(newKidAge) || 0,
+        parentId: currentUser.uid,
+      });
+      setNewKidName(''); setNewKidAge('');
+    } catch (e) { console.error(e); alert('Could not add kid.'); }
+    finally { setSavingKid(false); }
+  };
+
+  const startEditKid = (kid) => {
+    setEditingKidId(kid.id);
+    setEditKidName(kid.name);
+    setEditKidAge(kid.age || '');
+  };
+
+  const saveEditKid = async () => {
+    if (!editKidName.trim()) return;
+    try {
+      await updateChildDB(groupId, editingKidId, {
+        name: editKidName.trim(),
+        age:  parseInt(editKidAge) || 0,
+      });
+      setEditingKidId(null);
+    } catch (e) { console.error(e); alert('Could not save changes.'); }
+  };
+
+  const deleteKid = async (kidId, kidName) => {
+    if (!confirm(`Remove ${kidName} from the grid? Their camps will also be deleted.`)) return;
+    try { await removeChildDB(groupId, kidId); }
+    catch (e) { console.error(e); alert('Could not remove kid.'); }
+  };
+
+  // Show partner section only if partner hasn't actually joined yet
+  const partnerHasJoined = !!partner;
+
+  return (
+    <Drawer open={open} onClose={onClose} width={520}>
+      <div style={{ padding: '24px 28px 16px', borderBottom: '1px solid var(--sg-ink-10)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <Eyebrow>MANAGE</Eyebrow>
+          <h2 className="sg-display" style={{ fontSize: 28, margin: '6px 0 0' }}>YOUR FAMILY</h2>
+        </div>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--sg-ink-60)' }}>
+          <Icon name="close" size={20}/>
+        </button>
+      </div>
+
+      <div style={{ padding: '24px 28px', display: 'grid', gap: 32 }}>
+
+        {/* ── Partner section ── */}
+        <section>
+          <Eyebrow>YOUR PARTNER</Eyebrow>
+          {partnerHasJoined ? (
+            <div style={{ marginTop: 12, padding: 16, background: 'var(--sg-paper)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Avatar parent={partner} size={36}/>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{partner.name}</div>
+                <div className="sg-mono" style={{ fontSize: 10.5, color: 'var(--sg-ink-60)', letterSpacing: '0.06em', marginTop: 2 }}>JOINED · {partner.email}</div>
+              </div>
+              <span className="sg-mono" style={{ fontSize: 10, padding: '4px 8px', background: 'var(--sg-success)', color: '#fff', letterSpacing: '0.06em', fontWeight: 600 }}>ACTIVE</span>
+            </div>
+          ) : (
+            <div style={{ marginTop: 12, display: 'grid', gap: 14 }}>
+              <Field label="PARTNER'S FIRST NAME">
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <InputBox
+                    value={partnerInput}
+                    onChange={e => setPartnerInput(e.target.value)}
+                    placeholder="e.g. Sarah"
+                    style={{ flex: 1 }}
+                  />
+                  <Button variant="primary" size="sm" onClick={savePartnerName} disabled={!partnerInput.trim() || savingPartner || partnerInput.trim() === (partnerNameInGroup || '')}>
+                    {savingPartner ? 'SAVING…' : 'SAVE'}
+                  </Button>
+                </div>
+              </Field>
+
+              <div style={{ padding: 16, background: 'var(--sg-black)', color: 'var(--sg-white)' }}>
+                <div className="sg-mono" style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.6)', marginBottom: 10 }}>
+                  {partnerNameInGroup ? `SEND TO ${partnerNameInGroup.toUpperCase()}` : 'INVITE YOUR PARTNER'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                  <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(250,250,247,0.85)' }}>
+                    {inviteUrl}
+                  </div>
+                  <button onClick={copyInvite} style={{
+                    padding: '8px 12px', background: copiedInvite ? 'var(--sg-accent)' : 'var(--sg-white)',
+                    color: copiedInvite ? '#fff' : 'var(--sg-black)', border: 'none', cursor: 'pointer',
+                    fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em',
+                    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                  }}>
+                    <Icon name={copiedInvite ? 'check' : 'copy'} size={12} stroke={2.5}/>
+                    {copiedInvite ? 'COPIED!' : 'COPY'}
+                  </button>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: 'rgba(250,250,247,0.55)', lineHeight: 1.5 }}>
+                  They click the link, sign in, and land in your shared grid.
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ── Kids section ── */}
+        <section>
+          <Eyebrow>YOUR KIDS</Eyebrow>
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            {myKids.length === 0 && (
+              <div style={{ padding: 16, background: 'var(--sg-paper)', fontSize: 13, color: 'var(--sg-ink-60)' }}>
+                You haven't added any kids yet.
+              </div>
+            )}
+            {myKids.map(kid => editingKidId === kid.id ? (
+              <div key={kid.id} style={{ padding: 12, background: 'var(--sg-paper)', display: 'grid', gridTemplateColumns: '1fr 80px auto auto', gap: 8, alignItems: 'center' }}>
+                <InputBox value={editKidName} onChange={e => setEditKidName(e.target.value)} placeholder="Name"/>
+                <InputBox type="number" min="1" max="18" value={editKidAge} onChange={e => setEditKidAge(e.target.value)} placeholder="Age"/>
+                <Button variant="primary" size="sm" onClick={saveEditKid}>SAVE</Button>
+                <Button variant="ghost" size="sm" onClick={() => setEditingKidId(null)}>CANCEL</Button>
+              </div>
+            ) : (
+              <div key={kid.id} style={{ padding: '12px 16px', background: 'var(--sg-paper)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 15 }}>{kid.name}</div>
+                  {kid.age ? <div className="sg-mono" style={{ fontSize: 10.5, color: 'var(--sg-ink-60)', letterSpacing: '0.06em', marginTop: 2 }}>{kid.age} YEARS OLD</div> : null}
+                </div>
+                <button onClick={() => startEditKid(kid)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--sg-ink-60)', fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em', padding: '6px 10px' }}>
+                  EDIT
+                </button>
+                <button onClick={() => deleteKid(kid.id, kid.name)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--sg-ink-60)', padding: 4 }} title="Remove kid">
+                  <Icon name="trash" size={16}/>
+                </button>
+              </div>
+            ))}
+
+            {/* Add new kid */}
+            <div style={{ padding: 12, border: '1px dashed var(--sg-ink-20)', display: 'grid', gridTemplateColumns: '1fr 80px auto', gap: 8, alignItems: 'center', marginTop: 4 }}>
+              <InputBox value={newKidName} onChange={e => setNewKidName(e.target.value)} placeholder="Add another kid"/>
+              <InputBox type="number" min="1" max="18" value={newKidAge} onChange={e => setNewKidAge(e.target.value)} placeholder="Age"/>
+              <Button variant="primary" size="sm" onClick={addKid} disabled={!newKidName.trim() || savingKid}>
+                {savingKid ? '…' : 'ADD'}
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Other parents invite ── */}
+        <section>
+          <Eyebrow>INVITE OTHER PARENTS</Eyebrow>
+          <div style={{ marginTop: 12, padding: 14, background: 'var(--sg-paper)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--sg-ink-90)' }}>
+              {inviteUrl}
+            </div>
+            <button onClick={copyInvite} style={{
+              padding: '8px 12px', background: copiedInvite ? 'var(--sg-accent)' : 'var(--sg-black)',
+              color: '#fff', border: 'none', cursor: 'pointer',
+              fontFamily: 'var(--sg-font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em',
+              display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+            }}>
+              <Icon name={copiedInvite ? 'check' : 'copy'} size={12} stroke={2.5}/>
+              {copiedInvite ? 'COPIED!' : 'COPY'}
+            </button>
+          </div>
+        </section>
+      </div>
+    </Drawer>
   );
 }

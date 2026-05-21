@@ -18,10 +18,11 @@ export const googleProvider = new GoogleAuthProvider();
 
 // ── Auth helpers ────────────────────────────────────────────────────────────
 
-const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-export const signInGoogle = () =>
-  isMobile() ? signInWithRedirect(auth, googleProvider) : signInWithPopup(auth, googleProvider);
-export const getGoogleRedirectResult = () => getRedirectResult(auth);
+// Always use popup — signInWithRedirect has known issues on iOS Safari and some Android browsers
+// where the redirect silently never fires. Popups work universally; on mobile they typically open
+// as a new tab and return to the original tab on completion.
+export const signInGoogle = () => signInWithPopup(auth, googleProvider);
+export const getGoogleRedirectResult = () => getRedirectResult(auth); // kept for backwards-compat
 export const signInEmail = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
 export const signUpEmail = (email, pw, name) =>
   createUserWithEmailAndPassword(auth, email, pw)
@@ -183,10 +184,24 @@ export async function removeBlock(groupId, blockId) {
   return deleteDoc(doc(db, 'groups', groupId, 'blocks', blockId));
 }
 
+// ── Group CRUD ──────────────────────────────────────────────────────────────
+
+export async function updateGroup(groupId, patch) {
+  return updateDoc(doc(db, 'groups', groupId), patch);
+}
+
 // ── Child CRUD ──────────────────────────────────────────────────────────────
 
 export async function addChild(groupId, data) {
   return addDoc(collection(db, 'groups', groupId, 'children'), data);
+}
+
+export async function updateChild(groupId, childId, patch) {
+  return updateDoc(doc(db, 'groups', groupId, 'children', childId), patch);
+}
+
+export async function removeChild(groupId, childId) {
+  return deleteDoc(doc(db, 'groups', groupId, 'children', childId));
 }
 
 export { onSnapshot, doc, collection, serverTimestamp };
