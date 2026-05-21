@@ -5,7 +5,7 @@ import { useAuth } from './app.jsx';
 import { WEEKS } from './data.js';
 import { Button, Eyebrow, Wordmark, Icon, Field, InputBox } from './ui.jsx';
 
-const STEPS = ['welcome', 'name', 'kids', 'camps', 'done'];
+const STEPS = ['welcome', 'partner', 'name', 'kids', 'camps', 'done'];
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -14,6 +14,7 @@ export default function Onboarding() {
   const step = STEPS[stepIdx];
 
   const [groupName, setGroupName] = useState('');
+  const [partnerName, setPartnerName] = useState('');
   const [kids, setKids] = useState([{ id: 'k1', name: '', age: '' }]);
   const [camps, setCamps] = useState([{ id: 'cm1', name: '', weekIdx: 1, kidIds: [], deadline: '', knownDeadline: null }]);
   const [groupId, setGroupId] = useState(null);
@@ -30,6 +31,7 @@ export default function Onboarding() {
         displayName: user.displayName || user.email,
         email: user.email,
         groupName: groupName.trim(),
+        partnerName: partnerName.trim(),
         kids,
         camps,
       });
@@ -50,10 +52,11 @@ export default function Onboarding() {
       <main className="sg-onb-shell" style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '40px 32px 80px' }}>
         <div style={{ width: '100%', maxWidth: 720 }}>
           {step === 'welcome' && <StepWelcome user={user} onNext={next}/>}
+          {step === 'partner' && <StepPartner partnerName={partnerName} setPartnerName={setPartnerName} onNext={next} onBack={back}/>}
           {step === 'name'    && <StepName groupName={groupName} setGroupName={setGroupName} onNext={next} onBack={back}/>}
           {step === 'kids'    && <StepKids kids={kids} setKids={setKids} onNext={next} onBack={back}/>}
           {step === 'camps'   && <StepCamps camps={camps} setCamps={setCamps} kids={kids} onNext={finish} onBack={back} saving={saving}/>}
-          {step === 'done'    && groupId && <StepDone groupId={groupId} groupName={groupName} kids={kids} camps={camps} onFinish={() => navigate(`/app/${groupId}`)}/>}
+          {step === 'done'    && groupId && <StepDone groupId={groupId} groupName={groupName} partnerName={partnerName} kids={kids} camps={camps} onFinish={() => navigate(`/app/${groupId}`)}/>}
         </div>
       </main>
     </div>
@@ -145,7 +148,35 @@ function StepWelcome({ user, onNext }) {
   );
 }
 
-// ── Step 2: Group name ───────────────────────────────────────────────────────
+// ── Step 2: Partner ──────────────────────────────────────────────────────────
+
+function StepPartner({ partnerName, setPartnerName, onNext, onBack }) {
+  return (
+    <div>
+      <StepTitle eyebrow="STEP 01 · YOUR PARTNER"
+        sub="If someone else — a spouse, co-parent, or partner — will also manage pickups and dropoffs, add their first name here. You'll get a link to share with them at the end.">
+        Do you manage<br/>
+        <span style={{ color: 'var(--sg-accent)' }}>with a partner?</span>
+      </StepTitle>
+      <div style={{ maxWidth: 520, display: 'grid', gap: 16 }}>
+        <Field label="PARTNER'S FIRST NAME (optional)">
+          <InputBox
+            value={partnerName}
+            onChange={e => setPartnerName(e.target.value)}
+            placeholder="e.g. Sarah"
+            autoFocus
+          />
+        </Field>
+        <div className="sg-mono" style={{ fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em' }}>
+          THEY'LL GET THEIR OWN SIGN-IN — YOU'LL SHARE AN INVITE LINK AT THE END
+        </div>
+      </div>
+      <StepFooter onBack={onBack} onNext={onNext} nextLabel={partnerName.trim() ? 'CONTINUE' : 'SKIP — JUST ME'}/>
+    </div>
+  );
+}
+
+// ── Step 3: Group name ───────────────────────────────────────────────────────
 
 function StepName({ groupName, setGroupName, onNext, onBack }) {
   return (
@@ -333,7 +364,7 @@ const chipStyle = (active) => ({
 
 // ── Step 5: Done ──────────────────────────────────────────────────────────────
 
-function StepDone({ groupId, groupName, kids, camps, onFinish }) {
+function StepDone({ groupId, groupName, partnerName, kids, camps, onFinish }) {
   const [copied, setCopied] = useState(false);
   const inviteUrl = `${window.location.origin}${window.location.pathname}#/join/${groupId}`;
   const copy = () => {
@@ -366,7 +397,7 @@ function StepDone({ groupId, groupName, kids, camps, onFinish }) {
       {/* Invite block */}
       <div style={{ padding: 20, background: 'var(--sg-black)', color: 'var(--sg-white)', marginBottom: 32, maxWidth: 560 }}>
         <div className="sg-mono" style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.6)', marginBottom: 12 }}>
-          INVITE OTHER PARENTS — SHARE THIS LINK
+          {partnerName ? `SEND THIS LINK TO ${partnerName.toUpperCase()}` : 'INVITE YOUR PARTNER OR OTHER PARENTS'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
           <div className="sg-mono" style={{ flex: 1, padding: '6px 8px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(250,250,247,0.85)' }}>
@@ -383,7 +414,9 @@ function StepDone({ groupId, groupName, kids, camps, onFinish }) {
           </button>
         </div>
         <div style={{ marginTop: 12, fontSize: 13, color: 'rgba(250,250,247,0.6)', lineHeight: 1.5 }}>
-          Anyone with this link can sign in and join your group. They'll add their own kids and camps.
+          {partnerName
+            ? `${partnerName} clicks this link, signs in with Google or email, and lands straight in your group. They can then add their own pickups and dropoffs.`
+            : 'Anyone with this link can sign in and join your group. They\'ll be able to add pickups, dropoffs, and camps.'}
         </div>
       </div>
 
