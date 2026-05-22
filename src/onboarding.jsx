@@ -204,33 +204,6 @@ function StepPartner({ partnerName, setPartnerName, onNext, onBack }) {
   );
 }
 
-// ── Step 3: Group name ───────────────────────────────────────────────────────
-
-function StepName({ groupName, setGroupName, onNext, onBack }) {
-  return (
-    <div>
-      <StepTitle eyebrow="STEP 01 · YOUR GROUP" sub="This is how the group appears at the top of the grid. Other parents will see this when they join.">
-        What should we<br/>
-        <span style={{ color: 'var(--sg-accent)' }}>call the crew?</span>
-      </StepTitle>
-      <div style={{ maxWidth: 520 }}>
-        <Field label="GROUP NAME">
-          <InputBox
-            value={groupName}
-            onChange={e => setGroupName(e.target.value)}
-            placeholder="e.g. Forest Hill Summer Crew"
-            autoFocus
-          />
-        </Field>
-        <div className="sg-mono" style={{ marginTop: 10, fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em' }}>
-          YOU CAN CHANGE THIS LATER
-        </div>
-      </div>
-      <StepFooter onBack={onBack} onNext={onNext} nextDisabled={!groupName.trim()}/>
-    </div>
-  );
-}
-
 // ── Step 3: Kids ─────────────────────────────────────────────────────────────
 
 function StepKids({ kids, setKids, onNext, onBack, saving }) {

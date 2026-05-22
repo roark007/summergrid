@@ -18,7 +18,10 @@
       "Bash(nslookup -type=TXT _acme-challenge.summergrid.space 8.8.8.8)",
       "Bash(curl -sI https://summergrid.space)",
       "Bash(curl -sv https://summergrid.space)",
-      "Bash(curl -sI https://summergrid.space/__/auth/handler)"
+      "Bash(curl -sI https://summergrid.space/__/auth/handler)",
+      "Bash(curl -s https://summergrid.space/)",
+      "Bash(curl -s https://summergrid.space/assets/index-C7Ry_jy8.js)",
+      "Bash(curl -s \"https://summergrid.space/assets/$\\(curl -s https://summergrid.space/)"
     ]
   }
 }
