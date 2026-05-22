@@ -18,7 +18,7 @@ const app = initializeApp(firebaseConfig);
 // App Check protects the Firebase backend from abuse (bot signups, scraping, spam group creation).
 // Only initializes if a reCAPTCHA site key is configured — leaving the key empty disables protection
 // but lets the app continue to work (useful during local dev or before App Check is set up).
-const RECAPTCHA_SITE_KEY = ''; // TODO: paste reCAPTCHA v3 site key from Firebase Console → App Check. Until set, App Check is disabled.
+const RECAPTCHA_SITE_KEY = '6Lc7P_csAAAAANpcK3rUPm_sYMhUCASsQ8qC6Ch5'; // public site key — safe to commit
 if (RECAPTCHA_SITE_KEY) {
   try {
     initializeAppCheck(app, {
