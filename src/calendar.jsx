@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react';
 import { WEEKS, DAYS, blockPickupByDay, blockDropoffByDay, buildCarpoolIndex } from './data.js';
-import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB, signOutUser } from './firebase.js';
+import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB, ensurePartnerInviteCode, signOutUser } from './firebase.js';
 import { Button, Eyebrow, Wordmark, Icon, Avatar, AvatarCluster, Drawer, Modal, Field, InputBox } from './ui.jsx';
 
 // Context so sub-components can access group data without deep prop drilling
@@ -1026,6 +1026,12 @@ function ManageDrawer({ open, onClose }) {
 
   useEffect(() => { setPartnerInput(partnerNameInGroup || ''); }, [partnerNameInGroup, open]);
   useEffect(() => { setGroupNameInput(group?.name || ''); }, [group?.name, open]);
+
+  // Auto-upgrade legacy groups missing a separate partnerInviteCode the first time MANAGE opens
+  useEffect(() => {
+    if (!open || !group || group.partnerInviteCode) return;
+    ensurePartnerInviteCode(group).catch(e => console.error('Could not generate partner invite code:', e));
+  }, [open, group?.id, group?.partnerInviteCode]);
 
   const saveGroupName = async () => {
     if (!groupNameInput.trim() || groupNameInput.trim() === group?.name) return;

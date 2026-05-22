@@ -229,6 +229,22 @@ export async function updateGroup(groupId, patch) {
   return updateDoc(doc(db, 'groups', groupId), patch);
 }
 
+// Upgrade legacy groups (created before the partner-invite-code feature) by generating
+// a distinct partner code and registering it in inviteCodes. Idempotent — safe to call
+// on already-upgraded groups.
+export async function ensurePartnerInviteCode(group) {
+  if (!group || group.partnerInviteCode) return group?.partnerInviteCode;
+  const code = generateCode();
+  await updateDoc(doc(db, 'groups', group.id), { partnerInviteCode: code });
+  await setDoc(doc(db, 'inviteCodes', code), {
+    groupId: group.id,
+    kind: 'partner',
+    partnerOf: group.createdBy,
+    createdAt: serverTimestamp(),
+  });
+  return code;
+}
+
 // ── Child CRUD ──────────────────────────────────────────────────────────────
 
 export async function addChild(groupId, data) {
