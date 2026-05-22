@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react';
 import { WEEKS, DAYS, blockPickupByDay, blockDropoffByDay, buildCarpoolIndex } from './data.js';
-import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB } from './firebase.js';
+import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB, signOutUser } from './firebase.js';
 import { Button, Eyebrow, Wordmark, Icon, Avatar, AvatarCluster, Drawer, Modal, Field, InputBox } from './ui.jsx';
 
 // Context so sub-components can access group data without deep prop drilling
@@ -1217,6 +1217,23 @@ function ManageDrawer({ open, onClose }) {
               <Icon name={copiedGeneral ? 'check' : 'copy'} size={12} stroke={2.5}/>
               {copiedGeneral ? 'COPIED!' : 'COPY'}
             </button>
+          </div>
+        </section>
+
+        {/* ── Account / Sign out ── */}
+        <section style={{ borderTop: '1px solid var(--sg-ink-10)', paddingTop: 24 }}>
+          <Eyebrow>YOUR ACCOUNT</Eyebrow>
+          <div style={{ marginTop: 12, padding: '14px 16px', background: 'var(--sg-paper)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{currentUser?.displayName || currentUser?.email}</div>
+              {currentUser?.displayName && currentUser?.email && (
+                <div className="sg-mono" style={{ fontSize: 10.5, color: 'var(--sg-ink-60)', letterSpacing: '0.04em', marginTop: 2 }}>{currentUser.email}</div>
+              )}
+            </div>
+            <Button variant="ghost" size="sm" onClick={async () => {
+              if (!confirm('Sign out of SummerGrid?')) return;
+              try { await signOutUser(); } catch (e) { console.error(e); }
+            }}>SIGN OUT</Button>
           </div>
         </section>
       </div>
