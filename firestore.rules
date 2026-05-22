@@ -9,11 +9,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // User-to-group index — entry doc IDs are `{userId}_{groupId}`, so users can only
-    // touch their own entries. Prevents enumeration of who-is-in-what at scale.
+    // User-to-group index — scoped to the owner via the `userId` field so list/query
+    // operations work (Firestore's safety analyzer can't infer scoping from doc-id patterns,
+    // only from field comparisons against request.auth.uid).
     match /userGroups/{entry} {
-      allow read, write: if request.auth != null
-        && entry.matches('^' + request.auth.uid + '_.*');
+      allow read:           if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow delete:         if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Groups
