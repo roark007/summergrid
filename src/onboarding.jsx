@@ -4,7 +4,7 @@ import { createGroup, addUserGroupIndex } from './firebase.js';
 import { useAuth } from './app.jsx';
 import { Button, Eyebrow, Wordmark, Icon, Field, InputBox } from './ui.jsx';
 
-const STEPS = ['welcome', 'partner', 'kids', 'done'];
+const STEPS = ['welcome', 'name', 'partner', 'kids', 'done'];
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -12,6 +12,7 @@ export default function Onboarding() {
   const [stepIdx, setStepIdx] = useState(0);
   const step = STEPS[stepIdx];
 
+  const [groupName, setGroupName] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [kids, setKids] = useState([{ id: 'k1', name: '', age: '' }]);
   const [groupId, setGroupId] = useState(null);
@@ -24,16 +25,12 @@ export default function Onboarding() {
 
   const finish = async () => {
     setSaving(true);
-    const firstName = (user.displayName || user.email || 'My').split(/[\s@]/)[0];
-    const autoGroupName = partnerName.trim()
-      ? `${firstName} & ${partnerName.trim()}'s Summer`
-      : `${firstName}'s Summer Crew`;
     try {
       const { groupId: gid, inviteCode: code, partnerInviteCode: pCode } = await createGroup({
         userId: user.uid,
         displayName: user.displayName || user.email,
         email: user.email,
-        groupName: autoGroupName,
+        groupName: groupName.trim(),
         partnerName: partnerName.trim(),
         kids,
         camps: [],
@@ -57,6 +54,7 @@ export default function Onboarding() {
       <main className="sg-onb-shell" style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '40px 32px 80px' }}>
         <div style={{ width: '100%', maxWidth: 720 }}>
           {step === 'welcome' && <StepWelcome user={user} onNext={next}/>}
+          {step === 'name'    && <StepName groupName={groupName} setGroupName={setGroupName} onNext={next} onBack={back}/>}
           {step === 'partner' && <StepPartner partnerName={partnerName} setPartnerName={setPartnerName} onNext={next} onBack={back}/>}
           {step === 'kids'    && <StepKids kids={kids} setKids={setKids} onNext={finish} onBack={back} saving={saving}/>}
           {step === 'done'    && groupId && <StepDone partnerInviteCode={partnerInviteCode} partnerName={partnerName} kids={kids} onFinish={() => navigate(`/app/${groupId}`)}/>}
@@ -147,6 +145,33 @@ function StepWelcome({ user, onNext }) {
         ))}
       </div>
       <StepFooter onNext={onNext} nextLabel="LET'S GO"/>
+    </div>
+  );
+}
+
+// ── Step 1: Group name ───────────────────────────────────────────────────────
+
+function StepName({ groupName, setGroupName, onNext, onBack }) {
+  return (
+    <div>
+      <StepTitle eyebrow="STEP 01 · YOUR GROUP" sub="This is how the group appears at the top of the grid. Other parents will see this when they join.">
+        What should we<br/>
+        <span style={{ color: 'var(--sg-accent)' }}>call the crew?</span>
+      </StepTitle>
+      <div style={{ maxWidth: 520 }}>
+        <Field label="GROUP NAME">
+          <InputBox
+            value={groupName}
+            onChange={e => setGroupName(e.target.value)}
+            placeholder="e.g. Forest Hill Summer Crew"
+            autoFocus
+          />
+        </Field>
+        <div className="sg-mono" style={{ marginTop: 10, fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em' }}>
+          YOU CAN CHANGE THIS LATER FROM MANAGE
+        </div>
+      </div>
+      <StepFooter onBack={onBack} onNext={onNext} nextDisabled={!groupName.trim()}/>
     </div>
   );
 }

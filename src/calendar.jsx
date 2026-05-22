@@ -1011,6 +1011,8 @@ function ManageDrawer({ open, onClose }) {
   const partner = members.find(m => m.id !== currentUser?.uid && (m.partnerOf === myFamilyId || m.id === myFamilyId));
   const partnerNameInGroup = group?.partnerName;
 
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const [savingGroupName, setSavingGroupName] = useState(false);
   const [partnerInput, setPartnerInput] = useState('');
   const [savingPartner, setSavingPartner] = useState(false);
   const [copiedPartner, setCopiedPartner] = useState(false);
@@ -1023,6 +1025,15 @@ function ManageDrawer({ open, onClose }) {
   const [editKidAge, setEditKidAge] = useState('');
 
   useEffect(() => { setPartnerInput(partnerNameInGroup || ''); }, [partnerNameInGroup, open]);
+  useEffect(() => { setGroupNameInput(group?.name || ''); }, [group?.name, open]);
+
+  const saveGroupName = async () => {
+    if (!groupNameInput.trim() || groupNameInput.trim() === group?.name) return;
+    setSavingGroupName(true);
+    try { await updateGroupDB(groupId, { name: groupNameInput.trim() }); }
+    catch (e) { console.error(e); alert('Could not rename group.'); }
+    finally { setSavingGroupName(false); }
+  };
 
   // Legacy groups created before partner-invite-code feature have only inviteCode.
   // Fall back to it so the partner section still works; new groups get a distinct code.
@@ -1101,6 +1112,26 @@ function ManageDrawer({ open, onClose }) {
       </div>
 
       <div style={{ padding: '24px 28px', display: 'grid', gap: 32 }}>
+
+        {/* ── Group name section ── */}
+        <section>
+          <Eyebrow>GROUP NAME</Eyebrow>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <InputBox
+              value={groupNameInput}
+              onChange={e => setGroupNameInput(e.target.value)}
+              placeholder="e.g. Forest Hill Summer Crew"
+              style={{ flex: 1 }}
+            />
+            <Button variant="primary" size="sm" onClick={saveGroupName}
+              disabled={!groupNameInput.trim() || savingGroupName || groupNameInput.trim() === group?.name}>
+              {savingGroupName ? 'SAVING…' : 'SAVE'}
+            </Button>
+          </div>
+          <div className="sg-mono" style={{ marginTop: 8, fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em' }}>
+            VISIBLE TO EVERYONE IN THE GROUP
+          </div>
+        </section>
 
         {/* ── Partner section ── */}
         <section>
