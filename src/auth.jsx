@@ -26,6 +26,7 @@ export default function AuthPage() {
   const [name, setName]         = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [agreed, setAgreed]     = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
@@ -69,6 +70,7 @@ export default function AuthPage() {
     try {
       if (mode === 'signup') {
         if (!name.trim()) { setError('Please enter your name.'); setLoading(false); return; }
+        if (!agreed) { setError('Please agree to the Terms and Privacy Policy.'); setLoading(false); return; }
         await signUpEmail(email, password, name.trim());
       } else {
         await signInEmail(email, password);
@@ -130,13 +132,22 @@ export default function AuthPage() {
               <InputBox type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" minLength={6}/>
             </Field>
 
+            {mode === 'signup' && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--sg-ink-60)', lineHeight: 1.5 }}>
+                <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop: 3, accentColor: 'var(--sg-accent)' }}/>
+                <span>
+                  I agree to the <a href="#/terms" target="_blank" style={{ color: 'var(--sg-black)', textDecoration: 'underline' }}>Terms of Service</a> and <a href="#/privacy" target="_blank" style={{ color: 'var(--sg-black)', textDecoration: 'underline' }}>Privacy Policy</a>.
+                </span>
+              </label>
+            )}
+
             {error && (
               <div style={{ padding: '10px 14px', background: '#FFF0EE', border: '1px solid #FFD0C8', fontSize: 13, color: '#B93A2A' }}>
                 {error}
               </div>
             )}
 
-            <Button variant="primary" size="lg" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
+            <Button variant="primary" size="lg" disabled={loading || (mode === 'signup' && !agreed)} style={{ width: '100%', justifyContent: 'center', opacity: (mode === 'signup' && !agreed) ? 0.5 : 1 }}>
               {loading ? 'Working…' : mode === 'signup' ? 'CREATE ACCOUNT' : 'SIGN IN'}
             </Button>
           </form>

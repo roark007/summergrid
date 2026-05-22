@@ -233,10 +233,14 @@ function FinalCTA({ onStart }) {
 function Footer() {
   return (
     <footer style={{ background: 'var(--sg-black)', color: 'var(--sg-white)', padding: '32px 48px 40px', borderTop: '1px solid rgba(250,250,247,0.12)' }}>
-      <div className="sg-landing-footer" style={{ maxWidth: 1440, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="sg-landing-footer" style={{ maxWidth: 1440, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <Wordmark size={20} color="#fff"/>
-        <div className="sg-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: 'rgba(250,250,247,0.5)' }}>
-          © SUMMERGRID 2026
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <a href="#/privacy" className="sg-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: 'rgba(250,250,247,0.6)' }}>PRIVACY</a>
+          <a href="#/terms" className="sg-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: 'rgba(250,250,247,0.6)' }}>TERMS</a>
+          <div className="sg-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: 'rgba(250,250,247,0.5)' }}>
+            © SUMMERGRID 2026
+          </div>
         </div>
       </div>
     </footer>

@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, sendEmailVerification } from 'firebase/auth';
 import { getFirestore, doc, collection, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -13,6 +14,20 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// App Check protects the Firebase backend from abuse (bot signups, scraping, spam group creation).
+// Only initializes if a reCAPTCHA site key is configured — leaving the key empty disables protection
+// but lets the app continue to work (useful during local dev or before App Check is set up).
+const RECAPTCHA_SITE_KEY = ''; // TODO: paste reCAPTCHA v3 site key from Firebase Console → App Check. Until set, App Check is disabled.
+if (RECAPTCHA_SITE_KEY) {
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) { console.warn('App Check init failed:', e); }
+}
+
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -33,7 +48,12 @@ export const getGoogleRedirectResult = () => getRedirectResult(auth);
 export const signInEmail = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
 export const signUpEmail = (email, pw, name) =>
   createUserWithEmailAndPassword(auth, email, pw)
-    .then(cred => updateProfile(cred.user, { displayName: name }).then(() => cred));
+    .then(async cred => {
+      await updateProfile(cred.user, { displayName: name });
+      try { await sendEmailVerification(cred.user); } catch (e) { console.warn('Could not send verification email:', e); }
+      return cred;
+    });
+export const resendVerification = () => auth.currentUser ? sendEmailVerification(auth.currentUser) : Promise.reject(new Error('Not signed in'));
 export const signOutUser = () => signOut(auth);
 
 // ── Member color palette ────────────────────────────────────────────────────

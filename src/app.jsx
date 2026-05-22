@@ -3,13 +3,14 @@ import { useState, useEffect, useContext, createContext, useCallback, useRef } f
 import { HashRouter, Routes, Route, Navigate, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc, collection } from 'firebase/firestore';
-import { auth, db, signOutUser, joinGroup, addUserGroupIndex, getGoogleRedirectResult } from './firebase.js';
+import { auth, db, signOutUser, joinGroup, addUserGroupIndex, getGoogleRedirectResult, resendVerification } from './firebase.js';
 import { DAYS, blockPickupByDay, blockDropoffByDay, blockPickupParents, blockDropoffParents, buildCarpoolIndex } from './data.js';
 import Landing from './landing.jsx';
 import AuthPage from './auth.jsx';
 import Onboarding from './onboarding.jsx';
 import Calendar from './calendar.jsx';
-import { Spinner, Wordmark, Button } from './ui.jsx';
+import { PrivacyPage, TermsPage } from './legal.jsx';
+import { Spinner, Wordmark, Button, Eyebrow } from './ui.jsx';
 import { TweaksPanel, TweakSection, TweakColor, useTweaks } from './tweaks-panel.jsx';
 
 // ── Auth context ──────────────────────────────────────────────────────────────
@@ -46,7 +47,62 @@ function Protected({ children }) {
   const user     = useAuth();
   const location = useLocation();
   if (!user) return <Navigate to="/signin" state={{ from: location.pathname + location.search }} replace />;
+  // Google sign-in pre-verifies emails. Email/password signups must verify before proceeding.
+  if (!user.emailVerified) return <VerifyEmailScreen user={user}/>;
   return children;
+}
+
+function VerifyEmailScreen({ user }) {
+  const navigate     = useNavigate();
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState('');
+  const [checking, setChecking] = useState(false);
+
+  const resend = async () => {
+    setError(''); setSent(false);
+    try { await resendVerification(); setSent(true); }
+    catch (e) { setError(e.message || 'Could not send. Try again in a minute.'); }
+  };
+
+  const recheck = async () => {
+    setChecking(true);
+    try {
+      await user.reload();
+      if (user.emailVerified) {
+        // Force a re-render at the top-level so Protected re-evaluates
+        window.location.reload();
+      } else {
+        setError('Still not verified. Check your inbox (and spam folder).');
+      }
+    } finally { setChecking(false); }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, padding: 32, background: 'var(--sg-white)' }}>
+      <Wordmark />
+      <div style={{ maxWidth: 480, textAlign: 'center' }}>
+        <Eyebrow>VERIFY YOUR EMAIL</Eyebrow>
+        <h1 className="sg-display" style={{ fontSize: 'clamp(36px, 6vw, 56px)', margin: '16px 0 24px' }}>
+          Check your<br/>
+          <span style={{ color: 'var(--sg-accent)' }}>inbox.</span>
+        </h1>
+        <p style={{ color: 'var(--sg-ink-60)', lineHeight: 1.6, marginBottom: 24 }}>
+          We sent a verification link to <strong style={{ color: 'var(--sg-black)' }}>{user.email}</strong>. Click it to confirm your account, then come back here.
+        </p>
+        {sent && <div style={{ padding: '10px 14px', background: '#E8F5E9', border: '1px solid #A5D6A7', fontSize: 13, color: '#1F7A3A', marginBottom: 16 }}>Verification email sent.</div>}
+        {error && <div style={{ padding: '10px 14px', background: '#FFF0EE', border: '1px solid #FFD0C8', fontSize: 13, color: '#B93A2A', marginBottom: 16 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Button variant="primary" onClick={recheck} disabled={checking}>{checking ? 'CHECKING…' : "I'VE VERIFIED"}</Button>
+          <Button variant="ghost" onClick={resend}>RESEND EMAIL</Button>
+        </div>
+        <div style={{ marginTop: 32 }}>
+          <button onClick={async () => { await signOutUser(); navigate('/'); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--sg-font-mono)', fontSize: 11, letterSpacing: '0.08em', color: 'var(--sg-ink-60)' }}>
+            SIGN OUT AND USE DIFFERENT ACCOUNT
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Real-time group data ──────────────────────────────────────────────────────
@@ -209,6 +265,8 @@ export default function App() {
             <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
             <Route path="/app/:groupId" element={<Protected><GroupApp /></Protected>} />
             <Route path="/join/:code"   element={<JoinPage />} />
+            <Route path="/privacy"      element={<PrivacyPage />} />
+            <Route path="/terms"        element={<TermsPage />} />
             <Route path="*"             element={<Navigate to="/" replace />} />
           </Routes>
         </HashRouter>
