@@ -4,9 +4,8 @@ import { getFirestore, doc, collection, addDoc, setDoc, updateDoc, deleteDoc, ge
 
 const firebaseConfig = {
   apiKey: "AIzaSyAFzfghmV_Qk4fMgPjjboBFD4i3J83dHaw",
-  // Will be updated to summergrid.space once Firebase Hosting custom domain is verified.
-  // Until then, keep this as the default firebaseapp.com domain.
-  authDomain: "summergrid-bd6c5.firebaseapp.com",
+  // Custom domain — must match the hosting domain so iOS/Chrome don't treat auth as third-party
+  authDomain: "summergrid.space",
   projectId: "summergrid-bd6c5",
   storageBucket: "summergrid-bd6c5.firebasestorage.app",
   messagingSenderId: "36159490130",

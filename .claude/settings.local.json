@@ -14,7 +14,10 @@
       "Bash(gh run *)",
       "Bash(firebase deploy *)",
       "Bash(nslookup summergrid.space 8.8.8.8)",
-      "Bash(nslookup -type=TXT summergrid.space 8.8.8.8)"
+      "Bash(nslookup -type=TXT summergrid.space 8.8.8.8)",
+      "Bash(nslookup -type=TXT _acme-challenge.summergrid.space 8.8.8.8)",
+      "Bash(curl -sI https://summergrid.space)",
+      "Bash(curl -sv https://summergrid.space)"
     ]
   }
 }
