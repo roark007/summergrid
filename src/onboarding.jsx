@@ -1,48 +1,66 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { createGroup, addUserGroupIndex } from './firebase.js';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { createGroup, addUserGroupIndex, addChild, updateGroup } from './firebase.js';
 import { useAuth } from './app.jsx';
 import { Button, Eyebrow, Wordmark, Icon, Field, InputBox } from './ui.jsx';
 
-const STEPS = ['welcome', 'name', 'partner', 'kids', 'done'];
+const STEPS      = ['welcome', 'name', 'partner', 'kids', 'done'];
+const JOIN_STEPS = ['partner', 'kids', 'done'];
 
 export default function Onboarding() {
-  const navigate = useNavigate();
-  const user = useAuth();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const user      = useAuth();
+
+  const joinGroupId = location.state?.joinGroupId || null;
+  const steps = joinGroupId ? JOIN_STEPS : STEPS;
+
   const [stepIdx, setStepIdx] = useState(0);
-  const step = STEPS[stepIdx];
+  const step = steps[stepIdx];
 
   const [groupName, setGroupName] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [kids, setKids] = useState([{ id: 'k1', name: '', age: '' }]);
-  const [groupId, setGroupId] = useState(null);
+  const [groupId, setGroupId] = useState(joinGroupId);
   const [inviteCode, setInviteCode] = useState(null);
   const [partnerInviteCode, setPartnerInviteCode] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const next = () => setStepIdx(i => Math.min(i + 1, STEPS.length - 1));
+  const next = () => setStepIdx(i => Math.min(i + 1, steps.length - 1));
   const back = () => setStepIdx(i => Math.max(i - 1, 0));
 
   const finish = async () => {
     setSaving(true);
     try {
-      const { groupId: gid, inviteCode: code, partnerInviteCode: pCode } = await createGroup({
-        userId: user.uid,
-        displayName: user.displayName || user.email,
-        email: user.email,
-        groupName: groupName.trim(),
-        partnerName: partnerName.trim(),
-        kids,
-        camps: [],
-      });
-      await addUserGroupIndex(user.uid, gid);
-      setGroupId(gid);
-      setInviteCode(code);
-      setPartnerInviteCode(pCode);
-      next();
+      if (joinGroupId) {
+        // Joining an existing group — just add kids (and optionally partner name)
+        const validKids = kids.filter(k => k.name.trim());
+        await Promise.all(validKids.map(k =>
+          addChild(joinGroupId, { name: k.name.trim(), age: k.age ? parseInt(k.age, 10) : null, parentId: user.uid })
+        ));
+        if (partnerName.trim()) {
+          await updateGroup(joinGroupId, { partnerName: partnerName.trim() });
+        }
+        next();
+      } else {
+        const { groupId: gid, inviteCode: code, partnerInviteCode: pCode } = await createGroup({
+          userId: user.uid,
+          displayName: user.displayName || user.email,
+          email: user.email,
+          groupName: groupName.trim(),
+          partnerName: partnerName.trim(),
+          kids,
+          camps: [],
+        });
+        await addUserGroupIndex(user.uid, gid);
+        setGroupId(gid);
+        setInviteCode(code);
+        setPartnerInviteCode(pCode);
+        next();
+      }
     } catch (e) {
       console.error(e);
-      alert('Something went wrong saving your group. Please try again.');
+      alert('Something went wrong. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -50,22 +68,21 @@ export default function Onboarding() {
 
   return (
     <div style={{ background: 'var(--sg-white)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <OnbHeader stepIdx={stepIdx} onCancel={() => navigate('/')}/>
+      <OnbHeader stepIdx={stepIdx} total={steps.length} onCancel={() => navigate('/')}/>
       <main className="sg-onb-shell" style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '40px 32px 80px' }}>
         <div style={{ width: '100%', maxWidth: 720 }}>
           {step === 'welcome' && <StepWelcome user={user} onNext={next}/>}
           {step === 'name'    && <StepName groupName={groupName} setGroupName={setGroupName} onNext={next} onBack={back}/>}
-          {step === 'partner' && <StepPartner partnerName={partnerName} setPartnerName={setPartnerName} onNext={next} onBack={back}/>}
+          {step === 'partner' && <StepPartner partnerName={partnerName} setPartnerName={setPartnerName} onNext={next} onBack={back} isJoin={!!joinGroupId}/>}
           {step === 'kids'    && <StepKids kids={kids} setKids={setKids} onNext={finish} onBack={back} saving={saving}/>}
-          {step === 'done'    && groupId && <StepDone partnerInviteCode={partnerInviteCode} partnerName={partnerName} kids={kids} onFinish={() => navigate(`/app/${groupId}`)}/>}
+          {step === 'done'    && groupId && <StepDone partnerInviteCode={partnerInviteCode} partnerName={partnerName} kids={kids} isJoin={!!joinGroupId} onFinish={() => navigate(`/app/${groupId}`)}/>}
         </div>
       </main>
     </div>
   );
 }
 
-function OnbHeader({ stepIdx, onCancel }) {
-  const total = STEPS.length;
+function OnbHeader({ stepIdx, total = STEPS.length, onCancel }) {
   return (
     <header className="sg-onb-header" style={{
       borderBottom: '1px solid var(--sg-ink-10)', padding: '0 32px', height: 64,
@@ -178,7 +195,7 @@ function StepName({ groupName, setGroupName, onNext, onBack }) {
 
 // ── Step 2: Partner ──────────────────────────────────────────────────────────
 
-function StepPartner({ partnerName, setPartnerName, onNext, onBack }) {
+function StepPartner({ partnerName, setPartnerName, onNext, onBack, isJoin }) {
   return (
     <div>
       <StepTitle eyebrow="STEP 01 · YOUR PARTNER"
@@ -196,7 +213,9 @@ function StepPartner({ partnerName, setPartnerName, onNext, onBack }) {
           />
         </Field>
         <div className="sg-mono" style={{ fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em' }}>
-          THEY'LL GET THEIR OWN SIGN-IN — YOU'LL SHARE AN INVITE LINK AT THE END
+          {isJoin
+            ? 'ADD THEIR NAME NOW — SHARE A PARTNER INVITE LINK FROM MANAGE LATER'
+            : "THEY'LL GET THEIR OWN SIGN-IN — YOU'LL SHARE AN INVITE LINK AT THE END"}
         </div>
       </div>
       <StepFooter onBack={onBack} onNext={onNext} nextLabel={partnerName.trim() ? 'CONTINUE' : 'SKIP — JUST ME'}/>
@@ -381,9 +400,11 @@ const chipStyle = (active) => ({
 
 // ── Step 5: Done ──────────────────────────────────────────────────────────────
 
-function StepDone({ partnerInviteCode, partnerName, kids, onFinish }) {
+function StepDone({ partnerInviteCode, partnerName, kids, isJoin, onFinish }) {
   const [copied, setCopied] = useState(false);
-  const inviteUrl = `${window.location.origin}${window.location.pathname}#/join/${partnerInviteCode}`;
+  const inviteUrl = partnerInviteCode
+    ? `${window.location.origin}${window.location.pathname}#/join/${partnerInviteCode}`
+    : '';
   const copy = () => {
     navigator.clipboard?.writeText(inviteUrl);
     setCopied(true);
@@ -394,12 +415,15 @@ function StepDone({ partnerInviteCode, partnerName, kids, onFinish }) {
   return (
     <div>
       <StepTitle eyebrow="YOU'RE ALL SET"
-        sub={`Your grid is ready with ${validKids.map(k => k.name).join(' and ')} on it. Add camps whenever you're ready — just tap the + on any cell.`}>
-        Your grid is<br/>
-        <span style={{ color: 'var(--sg-accent)' }}>ready.</span>
+        sub={
+          isJoin
+            ? `You're in the group with ${validKids.map(k => k.name).join(' and ')} on the grid. Add camps any time.`
+            : `Your grid is ready with ${validKids.map(k => k.name).join(' and ')} on it. Add camps whenever you're ready — just tap the + on any cell.`
+        }>
+        {isJoin ? <>You're in the<br/><span style={{ color: 'var(--sg-accent)' }}>group.</span></> : <>Your grid is<br/><span style={{ color: 'var(--sg-accent)' }}>ready.</span></>}
       </StepTitle>
 
-      {partnerName && (
+      {partnerName && !isJoin && (
         <div style={{ padding: 20, background: 'var(--sg-black)', color: 'var(--sg-white)', marginBottom: 32, maxWidth: 560 }}>
           <div className="sg-mono" style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(250,250,247,0.6)', marginBottom: 12 }}>
             SEND THIS LINK TO {partnerName.toUpperCase()}
@@ -424,7 +448,13 @@ function StepDone({ partnerInviteCode, partnerName, kids, onFinish }) {
         </div>
       )}
 
-      <Button variant="accent" size="lg" iconAfter="arrowR" onClick={onFinish}>OPEN MY GRID</Button>
+      {partnerName && isJoin && (
+        <div style={{ padding: 16, background: 'var(--sg-paper)', border: '1px solid var(--sg-ink-10)', marginBottom: 32, maxWidth: 560, fontSize: 14, color: 'var(--sg-ink-60)', lineHeight: 1.5 }}>
+          To invite {partnerName} as your partner, open <strong>MANAGE</strong> from the calendar and copy the partner invite link there.
+        </div>
+      )}
+
+      <Button variant="accent" size="lg" iconAfter="arrowR" onClick={onFinish}>OPEN THE GRID</Button>
     </div>
   );
 }

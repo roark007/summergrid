@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, sendEmailVerification } from 'firebase/auth';
-import { getFirestore, doc, collection, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, collection, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAFzfghmV_Qk4fMgPjjboBFD4i3J83dHaw",
@@ -152,12 +152,20 @@ export async function createGroup({ userId, displayName, email, groupName, partn
 export async function joinGroup({ userId, displayName, email, inviteCode }) {
   const codeSnap = await getDoc(doc(db, 'inviteCodes', inviteCode.toUpperCase()));
   if (!codeSnap.exists()) throw new Error('This invite link is invalid or has expired.');
-  const { groupId, kind, partnerOf } = codeSnap.data();
+  // Legacy invite codes (created before the `kind` field existed) default to 'general'
+  const data      = codeSnap.data();
+  const groupId   = data.groupId;
+  const kind      = data.kind || 'general';
+  const partnerOf = data.partnerOf;
 
   // If the user is already a member, skip — don't overwrite their record (preserves admin status)
   try {
     const existing = await getDoc(doc(db, 'groups', groupId, 'members', userId));
-    if (existing.exists()) return groupId;
+    if (existing.exists()) {
+      // Treat existing primary (no partnerOf) with no kids as still needing onboarding
+      const wasPartnerJoin = !!existing.data().partnerOf;
+      return { groupId, kind: wasPartnerJoin ? 'partner' : kind };
+    }
   } catch { /* permission denied = definitely not a member, fall through */ }
 
   // For partner joins, inherit the inviter's color (visually one family unit).
@@ -191,7 +199,7 @@ export async function joinGroup({ userId, displayName, email, inviteCode }) {
     ...(kind === 'partner' && partnerOf ? { partnerOf } : {}),
   });
 
-  return groupId;
+  return { groupId, kind };
 }
 
 export async function getUserGroups(userId) {
@@ -257,6 +265,37 @@ export async function updateChild(groupId, childId, patch) {
 
 export async function removeChild(groupId, childId) {
   return deleteDoc(doc(db, 'groups', groupId, 'children', childId));
+}
+
+// Remove a member (and their partner + kids + blocks) from the group.
+// Does not ban — they can rejoin via the invite link at any time.
+export async function removeMember(groupId, memberId, allMembers, allChildren, allBlocks) {
+  const member = allMembers.find(m => m.id === memberId);
+  if (!member) return;
+
+  const familyPrimaryId = member.partnerOf || memberId;
+  const memberIdsToRemove = allMembers
+    .filter(m => m.id === familyPrimaryId || m.partnerOf === familyPrimaryId)
+    .map(m => m.id);
+
+  const kidIds = allChildren
+    .filter(c => c.parentId === familyPrimaryId)
+    .map(c => c.id);
+
+  const blockIds = allBlocks
+    .filter(b => kidIds.includes(b.childId))
+    .map(b => b.id);
+
+  const batch = writeBatch(db);
+  memberIdsToRemove.forEach(mid => batch.delete(doc(db, 'groups', groupId, 'members', mid)));
+  kidIds.forEach(kid  => batch.delete(doc(db, 'groups', groupId, 'children', kid)));
+  blockIds.forEach(bid => batch.delete(doc(db, 'groups', groupId, 'blocks', bid)));
+  await batch.commit();
+
+  // Clean up userGroups index (best-effort, outside batch)
+  await Promise.all(memberIdsToRemove.map(mid =>
+    deleteDoc(doc(db, 'userGroups', `${mid}_${groupId}`)).catch(() => {})
+  ));
 }
 
 export { onSnapshot, doc, collection, serverTimestamp };

@@ -163,8 +163,18 @@ function GroupApp() {
   if (loading) return <FullPageSpinner label="Loading your grid…" />;
   if (!group)  return <NotFound message="Group not found." onHome={() => navigate('/')} />;
 
-  const isMember = members.some(m => m.id === user?.uid);
-  if (!isMember) return <NotFound message="You're not a member of this group." onHome={() => navigate('/')} />;
+  const me = members.find(m => m.id === user?.uid);
+  if (!me) return <NotFound message="You're not a member of this group." onHome={() => navigate('/')} />;
+
+  // Safety net: a primary member (not someone's partner) with zero kids is in an
+  // unfinished setup state — route them to the join-onboarding flow so they can
+  // add their family. Covers every path that could skip onboarding (legacy invite
+  // codes without `kind`, browser cache, etc.).
+  const isPartner   = !!me.partnerOf;
+  const myKidsCount = children.filter(c => c.parentId === me.id).length;
+  if (!isPartner && myKidsCount === 0) {
+    return <Navigate to="/onboarding" state={{ joinGroupId: groupId }} replace />;
+  }
 
   return (
     <Calendar
@@ -194,14 +204,18 @@ function JoinPage() {
     joinedRef.current = true;
     (async () => {
       try {
-        const groupId = await joinGroup({
+        const { groupId, kind } = await joinGroup({
           userId:      user.uid,
           displayName: user.displayName || user.email,
           email:       user.email,
           inviteCode:  code,
         });
         await addUserGroupIndex(user.uid, groupId);
-        navigate(`/app/${groupId}`, { replace: true });
+        if (kind === 'general') {
+          navigate('/onboarding', { replace: true, state: { joinGroupId: groupId } });
+        } else {
+          navigate(`/app/${groupId}`, { replace: true });
+        }
       } catch (e) {
         console.error(e);
         joinedRef.current = false;

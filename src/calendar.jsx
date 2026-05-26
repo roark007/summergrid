@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react';
 import { WEEKS, DAYS, blockPickupByDay, blockDropoffByDay, buildCarpoolIndex } from './data.js';
-import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB, ensurePartnerInviteCode, signOutUser } from './firebase.js';
+import { addBlock as addBlockDB, updateBlock as updateBlockDB, removeBlock as removeBlockDB, updateGroup as updateGroupDB, addChild as addChildDB, updateChild as updateChildDB, removeChild as removeChildDB, removeMember as removeMemberDB, ensurePartnerInviteCode, signOutUser } from './firebase.js';
 import { Button, Eyebrow, Wordmark, Icon, Avatar, AvatarCluster, Drawer, Modal, Field, InputBox } from './ui.jsx';
 
 // Context so sub-components can access group data without deep prop drilling
@@ -555,8 +555,8 @@ function WeekDetail({ weekIdx, updateBlock, onEditBlock, onAddCell, onGoOverview
       <div style={{ flex: inline ? 'none' : 1, overflowY: inline ? 'visible' : 'auto', padding: isMobile ? '20px 16px' : '24px 28px' }}>
         {weekBlocks.length > 0 && (
           <div style={{ display: 'grid', gap: isMobile ? 20 : 28 }}>
-            {weekBlocks.map(b => (
-              <WeekCampRow key={b.id} block={b} updateBlock={updateBlock} onOpenBlock={() => onEditBlock(b.id)} isMobile={isMobile}/>
+            {groupBlocksByCamp(weekBlocks).map(group => (
+              <WeekCampGroupRow key={group[0].id} blocks={group} updateBlock={updateBlock} onEditBlock={onEditBlock} isMobile={isMobile}/>
             ))}
           </div>
         )}
@@ -619,38 +619,82 @@ const ReminderToggle = ({ on, onToggle }) => (
   </button>
 );
 
-// ── WeekCampRow ───────────────────────────────────────────────────────────────
+// ── WeekCampGroupRow ─────────────────────────────────────────────────────────
+// Groups blocks for the same camp into one row. Kids who share a camp share a
+// pickup/dropoff schedule, and the parent picker draws from all participating
+// families (3+ parents for a shared camp across two families).
 
-function WeekCampRow({ block, updateBlock, onOpenBlock, isMobile }) {
+function groupBlocksByCamp(blocks) {
+  const map = new Map();
+  blocks.forEach(b => {
+    const key = (b.campName || '').trim().toLowerCase();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(b);
+  });
+  return Array.from(map.values());
+}
+
+function WeekCampGroupRow({ blocks, updateBlock, onEditBlock, isMobile }) {
   const { getChild, getParent, members } = useCal();
-  const child = getChild(block.childId);
-  const childParent = child ? getParent(child.parentId) : null;
-  const pickup  = blockPickupByDay(block);
-  const dropoff = blockDropoffByDay(block);
   const [picker, setPicker] = useState(null);
 
-  if (!child || !childParent) return null;
+  // Resolve kids + their family primaries
+  const kids = blocks.map(b => getChild(b.childId)).filter(Boolean);
+  if (kids.length === 0) return null;
+
+  const primaryIds = [...new Set(kids.map(k => k.parentId))];
+  // Parent pool for this camp: all primaries + their partners
+  const parentPool = members.filter(m =>
+    primaryIds.includes(m.id) || primaryIds.includes(m.partnerOf)
+  );
+
+  // Use the first block as canonical for display; writes propagate to all blocks
+  const primaryBlock = blocks[0];
+  const pickup  = blockPickupByDay(primaryBlock);
+  const dropoff = blockDropoffByDay(primaryBlock);
+
+  // Color: single-family camps use that family's color; shared camps use accent
+  const isShared = primaryIds.length > 1;
+  const headerColor = isShared ? 'var(--sg-accent)' : (getParent(primaryIds[0])?.color || 'var(--sg-black)');
+  const headerTint  = isShared ? 'var(--sg-accent-soft)' : (getParent(primaryIds[0])?.color || '#000') + '10';
+
+  const kidNames = kids.map(k => k.name.toUpperCase()).join(' + ');
 
   const setDay = (kind, day, parentId) => {
-    if (kind === 'p') updateBlock(block.id, { pickupByDay:  { ...pickup,  [day]: parentId } });
-    else              updateBlock(block.id, { dropoffByDay: { ...dropoff, [day]: parentId } });
+    blocks.forEach(b => {
+      if (kind === 'p') {
+        const cur = blockPickupByDay(b);
+        updateBlock(b.id, { pickupByDay: { ...cur, [day]: parentId } });
+      } else {
+        const cur = blockDropoffByDay(b);
+        updateBlock(b.id, { dropoffByDay: { ...cur, [day]: parentId } });
+      }
+    });
     setPicker(null);
   };
+
   const fillAll = (kind, parentId) => {
     const map = { M: parentId, T: parentId, W: parentId, Th: parentId, F: parentId };
-    if (kind === 'p') updateBlock(block.id, { pickupByDay: map });
-    else              updateBlock(block.id, { dropoffByDay: map });
+    blocks.forEach(b => {
+      if (kind === 'p') updateBlock(b.id, { pickupByDay: map });
+      else              updateBlock(b.id, { dropoffByDay: map });
+    });
   };
 
   return (
     <div style={{ border: '1px solid var(--sg-ink-10)' }}>
-      <div style={{ padding: isMobile ? '12px 14px' : '14px 16px', background: childParent.color + '10', borderLeft: `3px solid ${childParent.color}`, display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-        <div style={{ fontFamily: 'var(--sg-font-display)', fontWeight: 800, fontSize: isMobile ? 18 : 22, textTransform: 'uppercase', letterSpacing: '-0.01em' }}>{child.name}</div>
+      <div style={{ padding: isMobile ? '12px 14px' : '14px 16px', background: headerTint, borderLeft: `3px solid ${headerColor}`, display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <div style={{ fontFamily: 'var(--sg-font-display)', fontWeight: 800, fontSize: isMobile ? 18 : 22, textTransform: 'uppercase', letterSpacing: '-0.01em' }}>{kidNames}</div>
+        {isShared && (
+          <span className="sg-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, padding: '3px 8px', background: 'var(--sg-accent)', color: '#fff', letterSpacing: '0.06em', fontWeight: 700, borderRadius: 999, flexShrink: 0 }}>
+            <Icon name="link" size={9} stroke={2.5}/> SHARED · {kids.length}
+          </span>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.campName}</div>
-          <div className="sg-mono" style={{ fontSize: 10.5, color: 'var(--sg-ink-60)', letterSpacing: '0.02em', marginTop: 2 }}>{fmtTimeRange(block.start, block.end)}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{primaryBlock.campName}</div>
+          <div className="sg-mono" style={{ fontSize: 10.5, color: 'var(--sg-ink-60)', letterSpacing: '0.02em', marginTop: 2 }}>{fmtTimeRange(primaryBlock.start, primaryBlock.end)}</div>
         </div>
-        <button onClick={onOpenBlock} style={{ background: 'transparent', border: '1px solid var(--sg-ink-20)', padding: '6px 10px', fontFamily: 'var(--sg-font-mono)', fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, cursor: 'pointer', borderRadius: 999 }}>EDIT CAMP</button>
+        <button onClick={() => onEditBlock(primaryBlock.id)} style={{ background: 'transparent', border: '1px solid var(--sg-ink-20)', padding: '6px 10px', fontFamily: 'var(--sg-font-mono)', fontSize: 10, letterSpacing: '0.08em', fontWeight: 600, cursor: 'pointer', borderRadius: 999 }}>EDIT CAMP</button>
       </div>
       <div style={{ padding: isMobile ? 12 : 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '58px repeat(5, 1fr) 28px' : '90px repeat(5, 1fr) 36px', gap: isMobile ? 4 : 8, alignItems: 'center', marginBottom: 6 }}>
@@ -658,15 +702,16 @@ function WeekCampRow({ block, updateBlock, onOpenBlock, isMobile }) {
           {DAYS.map(d => <div key={d.key} className="sg-mono" style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, color: 'var(--sg-ink-60)', letterSpacing: '0.1em', textAlign: 'center' }}>{isMobile ? d.key.toUpperCase() : d.full.toUpperCase()}</div>)}
           <div/>
         </div>
-        <DayPickerRow label="DROP-OFF" dayMap={dropoff} activePicker={picker} kind="d" onPickDay={day => setPicker(picker?.kind === 'd' && picker.day === day ? null : { kind: 'd', day })} onChoose={(pid) => picker && setDay(picker.kind, picker.day, pid)} onClosePicker={() => setPicker(null)} onFillAll={pid => fillAll('d', pid)} isMobile={isMobile}/>
-        <DayPickerRow label="PICK-UP"  dayMap={pickup}  activePicker={picker} kind="p" onPickDay={day => setPicker(picker?.kind === 'p' && picker.day === day ? null : { kind: 'p', day })} onChoose={(pid) => picker && setDay(picker.kind, picker.day, pid)} onClosePicker={() => setPicker(null)} onFillAll={pid => fillAll('p', pid)} isMobile={isMobile}/>
+        <DayPickerRow label="DROP-OFF" dayMap={dropoff} parentPool={parentPool} activePicker={picker} kind="d" onPickDay={day => setPicker(picker?.kind === 'd' && picker.day === day ? null : { kind: 'd', day })} onChoose={(pid) => picker && setDay(picker.kind, picker.day, pid)} onClosePicker={() => setPicker(null)} onFillAll={pid => fillAll('d', pid)} isMobile={isMobile}/>
+        <DayPickerRow label="PICK-UP"  dayMap={pickup}  parentPool={parentPool} activePicker={picker} kind="p" onPickDay={day => setPicker(picker?.kind === 'p' && picker.day === day ? null : { kind: 'p', day })} onChoose={(pid) => picker && setDay(picker.kind, picker.day, pid)} onClosePicker={() => setPicker(null)} onFillAll={pid => fillAll('p', pid)} isMobile={isMobile}/>
       </div>
     </div>
   );
 }
 
-function DayPickerRow({ label, dayMap, activePicker, kind, onPickDay, onChoose, onClosePicker, onFillAll, isMobile }) {
+function DayPickerRow({ label, dayMap, parentPool, activePicker, kind, onPickDay, onChoose, onClosePicker, onFillAll, isMobile }) {
   const { members, getParent } = useCal();
+  const pool = parentPool && parentPool.length > 0 ? parentPool : members;
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div>
@@ -682,7 +727,7 @@ function DayPickerRow({ label, dayMap, activePicker, kind, onPickDay, onChoose, 
                 {p ? <Avatar parent={p} size={isMobile ? 18 : 20}/> : <Icon name="plus" size={14}/>}
                 {!isMobile && <span style={{ fontSize: 11, fontWeight: 600 }}>{p ? p.short : '—'}</span>}
               </button>
-              {active && <ParentMenu onChoose={onChoose} onClose={onClosePicker} current={parentId}/>}
+              {active && <ParentMenu onChoose={onChoose} onClose={onClosePicker} current={parentId} pool={pool}/>}
             </div>
           );
         })}
@@ -695,7 +740,7 @@ function DayPickerRow({ label, dayMap, activePicker, kind, onPickDay, onChoose, 
               <div style={{ background: 'var(--sg-white)', border: '1px solid var(--sg-ink-20)', padding: 10, minWidth: 180, boxShadow: '0 12px 32px rgba(0,0,0,0.1)' }}>
                 <div className="sg-mono" style={{ fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--sg-ink-60)', marginBottom: 8 }}>FILL WHOLE ROW</div>
                 <div style={{ display: 'grid', gap: 4 }}>
-                  {members.map(p => (
+                  {pool.map(p => (
                     <button key={p.id} onClick={() => { onFillAll(p.id); setMenuOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 4, textAlign: 'left' }}>
                       <Avatar parent={p} size={20}/><span style={{ fontSize: 13, fontWeight: 500 }}>{p.short}</span>
                     </button>
@@ -710,8 +755,9 @@ function DayPickerRow({ label, dayMap, activePicker, kind, onPickDay, onChoose, 
   );
 }
 
-function ParentMenu({ onChoose, onClose, current }) {
+function ParentMenu({ onChoose, onClose, current, pool }) {
   const { members } = useCal();
+  const list = pool && pool.length > 0 ? pool : members;
   const ref = useRef(null);
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose(); };
@@ -724,7 +770,7 @@ function ParentMenu({ onChoose, onClose, current }) {
     <div ref={ref} style={{ position: 'absolute', top: '110%', left: '50%', transform: 'translateX(-50%)', background: 'var(--sg-white)', border: '1px solid var(--sg-ink-20)', padding: 8, zIndex: 10, minWidth: 160, boxShadow: '0 12px 32px rgba(0,0,0,0.12)' }}>
       <div className="sg-mono" style={{ fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--sg-ink-60)', padding: '4px 8px 6px' }}>ASSIGN TO</div>
       <div style={{ display: 'grid', gap: 2 }}>
-        {members.map(p => {
+        {list.map(p => {
           const active = current === p.id;
           return (
             <button key={p.id} onClick={() => onChoose(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: active ? 'var(--sg-paper)' : 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 4, textAlign: 'left' }}>
@@ -905,6 +951,75 @@ function ParentChips({ value, onChange }) {
         );
       })}
     </div>
+  );
+}
+
+// ── Admin: group member management ───────────────────────────────────────────
+
+function AdminMembersSection() {
+  const { group, members, children, blocks, currentUser } = useCal();
+  const groupId = group?.id;
+  const [removing, setRemoving] = useState(null);
+
+  // Build family units: each primary + their partners
+  const primaries = members.filter(m => !m.partnerOf);
+  const families = primaries
+    .filter(p => p.id !== currentUser?.uid) // exclude self
+    .map(primary => {
+      const partners = members.filter(m => m.partnerOf === primary.id);
+      const kids = children.filter(c => c.parentId === primary.id);
+      return { primary, partners, kids };
+    });
+
+  if (families.length === 0) return null;
+
+  const handleRemove = async (primaryId, displayName) => {
+    if (!confirm(`Remove ${displayName} (and their partner and kids, if any) from the group? They can rejoin later using the invite link.`)) return;
+    setRemoving(primaryId);
+    try {
+      await removeMemberDB(groupId, primaryId, members, children, blocks);
+    } catch (e) {
+      console.error(e);
+      alert('Could not remove member. Please try again.');
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  return (
+    <section style={{ borderTop: '1px solid var(--sg-ink-10)', paddingTop: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <Eyebrow>GROUP MEMBERS</Eyebrow>
+        <span className="sg-mono" style={{ fontSize: 9, padding: '2px 7px', background: 'var(--sg-black)', color: 'var(--sg-white)', letterSpacing: '0.08em', fontWeight: 700 }}>ADMIN</span>
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {families.map(({ primary, partners, kids }) => {
+          const allNames = [primary, ...partners].map(m => m.short).join(' & ');
+          const isRemoving = removing === primary.id;
+          return (
+            <div key={primary.id} style={{ padding: '12px 16px', background: 'var(--sg-paper)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <AvatarCluster parents={[primary, ...partners]} size={28}/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{allNames}</div>
+                <div className="sg-mono" style={{ fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.04em', marginTop: 2 }}>
+                  {kids.length} KID{kids.length !== 1 ? 'S' : ''} · {primary.email}
+                </div>
+              </div>
+              <button
+                onClick={() => handleRemove(primary.id, allNames)}
+                disabled={isRemoving}
+                style={{ background: 'transparent', border: '1px solid var(--sg-ink-20)', cursor: isRemoving ? 'default' : 'pointer', padding: '6px 12px', fontFamily: 'var(--sg-font-mono)', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: isRemoving ? 'var(--sg-ink-40)' : 'var(--sg-ink-60)', flexShrink: 0 }}
+              >
+                {isRemoving ? '…' : 'REMOVE'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="sg-mono" style={{ marginTop: 10, fontSize: 10, color: 'var(--sg-ink-60)', letterSpacing: '0.06em', lineHeight: 1.5 }}>
+        REMOVING A FAMILY DELETES THEIR KIDS AND CAMP ENTRIES. THEY CAN REJOIN VIA THE INVITE LINK.
+      </div>
+    </section>
   );
 }
 
@@ -1256,6 +1371,9 @@ function ManageDrawer({ open, onClose }) {
             </button>
           </div>
         </section>
+
+        {/* ── Admin: group members ── */}
+        {me?.isAdmin && <AdminMembersSection/>}
 
         {/* ── Account / Sign out ── */}
         <section style={{ borderTop: '1px solid var(--sg-ink-10)', paddingTop: 24 }}>

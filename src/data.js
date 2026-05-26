@@ -1,16 +1,22 @@
 // SummerGrid — static constants and pure helpers
 
 export const WEEKS = [
-  { idx: 1,  label: 'WK 23', start: 'Jun 8',  end: 'Jun 12' },
-  { idx: 2,  label: 'WK 24', start: 'Jun 15', end: 'Jun 19' },
-  { idx: 3,  label: 'WK 25', start: 'Jun 22', end: 'Jun 26' },
-  { idx: 4,  label: 'WK 26', start: 'Jun 29', end: 'Jul 3'  },
-  { idx: 5,  label: 'WK 27', start: 'Jul 6',  end: 'Jul 10' },
-  { idx: 6,  label: 'WK 28', start: 'Jul 13', end: 'Jul 17' },
-  { idx: 7,  label: 'WK 29', start: 'Jul 20', end: 'Jul 24' },
-  { idx: 8,  label: 'WK 30', start: 'Jul 27', end: 'Jul 31' },
-  { idx: 9,  label: 'WK 31', start: 'Aug 3',  end: 'Aug 7'  },
-  { idx: 10, label: 'WK 32', start: 'Aug 10', end: 'Aug 14' },
+  { idx: 1,  label: 'WK 22', start: 'May 25', end: 'May 29' },
+  { idx: 2,  label: 'WK 23', start: 'Jun 1',  end: 'Jun 5'  },
+  { idx: 3,  label: 'WK 24', start: 'Jun 8',  end: 'Jun 12' },
+  { idx: 4,  label: 'WK 25', start: 'Jun 15', end: 'Jun 19' },
+  { idx: 5,  label: 'WK 26', start: 'Jun 22', end: 'Jun 26' },
+  { idx: 6,  label: 'WK 27', start: 'Jun 29', end: 'Jul 3'  },
+  { idx: 7,  label: 'WK 28', start: 'Jul 6',  end: 'Jul 10' },
+  { idx: 8,  label: 'WK 29', start: 'Jul 13', end: 'Jul 17' },
+  { idx: 9,  label: 'WK 30', start: 'Jul 20', end: 'Jul 24' },
+  { idx: 10, label: 'WK 31', start: 'Jul 27', end: 'Jul 31' },
+  { idx: 11, label: 'WK 32', start: 'Aug 3',  end: 'Aug 7'  },
+  { idx: 12, label: 'WK 33', start: 'Aug 10', end: 'Aug 14' },
+  { idx: 13, label: 'WK 34', start: 'Aug 17', end: 'Aug 21' },
+  { idx: 14, label: 'WK 35', start: 'Aug 24', end: 'Aug 28' },
+  { idx: 15, label: 'WK 36', start: 'Aug 31', end: 'Sep 4'  },
+  { idx: 16, label: 'WK 37', start: 'Sep 7',  end: 'Sep 11' },
 ];
 
 export const DAYS = [
